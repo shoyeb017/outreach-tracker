@@ -1,0 +1,21 @@
+"use client";
+
+import { useState } from "react";
+import { Trash2, UserRoundX } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { formatDate } from "@/lib/utils";
+
+interface Suppression { id: string; email: string; email_normalized?: string; reason: string; notes: string | null; created_at: string }
+export function DataPrivacySettings({ initialSuppressions }: { initialSuppressions: Suppression[] }) {
+  const router = useRouter(); const [rows, setRows] = useState(initialSuppressions); const [email, setEmail] = useState(""); const [reason, setReason] = useState("Manually suppressed");
+  async function add() { const normalized = email.trim().toLowerCase(); if (!/^\S+@\S+\.\S+$/.test(normalized)) return toast.error("Enter a valid email address."); const supabase = getSupabaseBrowserClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return; const { data, error } = await supabase.from("suppression_list").upsert({ user_id: user.id, email: email.trim(), email_normalized: normalized, reason: reason.trim() || "Manually suppressed" }, { onConflict: "user_id,email_normalized" }).select("*").single(); if (error) toast.error(error.message); else { setRows((current) => [data, ...current.filter((item) => item.id !== data.id)]); setEmail(""); toast.success("Recipient suppressed."); } }
+  async function remove(id: string) { const { error } = await getSupabaseBrowserClient().from("suppression_list").delete().eq("id", id); if (error) toast.error(error.message); else setRows((current) => current.filter((item) => item.id !== id)); }
+  async function deleteData() { const phrase = window.prompt("This deletes all datasets, templates, history, Microsoft configuration, signature fields, and preferences. Type DELETE MY DATA to continue."); if (phrase !== "DELETE MY DATA") return; const supabase = getSupabaseBrowserClient(); const { error } = await supabase.rpc("delete_my_application_data"); if (error) toast.error(error.message); else { toast.success("Application data deleted. Your login account remains active."); router.push("/onboarding"); router.refresh(); } }
+  return <Card id="privacy"><CardHeader><CardTitle>Data and privacy</CardTitle><p className="mt-1 text-sm text-[#68736f]">Manage suppressed recipients and remove your application data.</p></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"><div><Label>Email to suppress</Label><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="person@example.com" /></div><div><Label>Reason</Label><Input value={reason} onChange={(e) => setReason(e.target.value)} /></div><Button onClick={add}>Add suppression</Button></div><div className="mt-5 max-h-72 overflow-auto rounded-lg border">{rows.length ? <div className="divide-y">{rows.map((row) => <div className="flex items-center justify-between gap-4 px-4 py-3" key={row.id}><div><div className="text-sm font-semibold">{row.email}</div><div className="mt-1 text-xs text-[#7a8581]">{row.reason} · {formatDate(row.created_at)}</div></div><Button size="icon" variant="ghost" title="Remove suppression" onClick={() => remove(row.id)}><Trash2 size={15} /></Button></div>)}</div> : <div className="p-8 text-center text-sm text-[#7a8581]">No suppressed recipients.</div>}</div><div className="mt-7 border-t pt-6"><h3 className="font-semibold text-[#9b241c]">Delete application data</h3><p className="mt-1 max-w-2xl text-sm leading-6 text-[#68736f]">Deletes your imported datasets, retained files, templates, sending history, suppression list, signature, Microsoft identifiers, and preferences. Your Supabase Auth login remains active; deleting that account requires the Supabase project administrator.</p><Button className="mt-4" variant="danger" onClick={deleteData}><UserRoundX size={15} />Delete my application data</Button></div></CardContent></Card>;
+}
