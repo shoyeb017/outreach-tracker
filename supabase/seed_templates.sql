@@ -11,7 +11,7 @@ insert into public.templates (
   'A clean starting point for a personal template.',
   null,
   'Your subject',
-  '<p>Hi {{first_name}},</p><p></p><p>{{signature}}</p>',
+  '<p>Hi {{first_name}},</p><p></p>{{signature}}',
   E'Hi {{first_name}},\n\n{{signature}}',
   'token_only',
   true,
@@ -303,7 +303,7 @@ select
 </ul>
 <p>Would you be open to a brief 15-minute introductory call next week to explore where AI can drive the fastest ROI for your team? Let us know.</p>
 <p>Best regards,</p>
-<p>{{signature}}</p>
+{{signature}}
 $html$,
     challenge, audience,
     point_1_title, point_1_body, point_2_title, point_2_body,

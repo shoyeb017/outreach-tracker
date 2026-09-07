@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildTemplateContext, extractPlaceholders, resolvePlaceholders, sanitizeEmailHtml } from "@/lib/templates/placeholders";
 import { groupRoutingValues, normalizeRoutingValue, resolveTemplateForRow, suggestTemplate } from "@/lib/templates/routing";
 import { resolveSubject } from "@/lib/email/subject";
-import { rowTemplateData } from "@/lib/email/render";
+import { normalizeSignatureTokenBlocks, rowTemplateData } from "@/lib/email/render";
 import { dataPlaceholdersForTemplates } from "@/lib/templates/dataset-mapping";
 
 describe("template resolution", () => {
@@ -18,6 +18,11 @@ describe("template resolution", () => {
   it("sanitizes dangerous HTML", () => {
     const sanitized = sanitizeEmailHtml('<p onclick="steal()">Hello</p><script>alert(1)</script><a href="javascript:bad()">x</a>');
     expect(sanitized).not.toMatch(/script|onclick|javascript:/i);
+  });
+
+  it("unwraps a standalone signature token from paragraph markup", () => {
+    expect(normalizeSignatureTokenBlocks('<p class="signature"> {{ signature }} </p>')).toBe("{{ signature }}");
+    expect(normalizeSignatureTokenBlocks("<p>Before {{signature}} after</p>")).toBe("<p>Before {{signature}} after</p>");
   });
 
   it("normalizes routing conservatively and only suggests exact matches", () => {

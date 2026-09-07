@@ -1,7 +1,7 @@
 import type { Dataset, DatasetColumn, DatasetPlaceholderMapping, DatasetRow, EmailTemplate, RoutingRule, SignatureField } from "@/types";
 import { renderSignature } from "./signature";
 import { resolveSubject } from "./subject";
-import { buildTemplateContext, htmlToPlainText, resolvePlaceholders, sanitizeEmailHtml } from "@/lib/templates/placeholders";
+import { buildTemplateContext, extractPlaceholders, htmlToPlainText, resolvePlaceholders, sanitizeEmailHtml } from "@/lib/templates/placeholders";
 import { resolveTemplateForRow } from "@/lib/templates/routing";
 
 export interface PreparedEmail {
@@ -11,6 +11,10 @@ export interface PreparedEmail {
   plainTextBody: string;
   missing: string[];
   routeSource: "override" | "routing" | "fallback" | "skip" | "unmapped";
+}
+
+export function normalizeSignatureTokenBlocks(html: string) {
+  return html.replace(/<p(?:\s[^>]*)?>\s*({{\s*signature\s*}})\s*<\/p>/gi, "$1");
 }
 
 function assignPlaceholder(target: Record<string, unknown>, placeholder: string, value: unknown) {
@@ -52,11 +56,12 @@ export function prepareRowEmail(args: {
   const template = args.templates.find((item) => item.id === route.templateId) ?? null;
   if (!template) return { template: null, subject: "", htmlBody: "", plainTextBody: "", missing: [], routeSource: route.source };
   const signature = renderSignature(args.signatureFields ?? []);
+  const hasSignatureToken = extractPlaceholders(template.html_body).includes("signature");
   const context = buildTemplateContext({ rowData: rowTemplateData(args.row, args.columns, args.placeholderMappings), signatureHtml: signature });
   const resolvedSubject = resolvePlaceholders(template.subject_template, context);
-  const resolvedBody = resolvePlaceholders(template.html_body, context);
+  const resolvedBody = resolvePlaceholders(normalizeSignatureTokenBlocks(template.html_body), context);
   let htmlBody = resolvedBody.output;
-  if (template.signature_behavior === "append" && !template.html_body.includes("{{signature}}")) htmlBody += signature;
+  if (template.signature_behavior === "append" && !hasSignatureToken) htmlBody += signature;
   if (template.signature_behavior === "none" && signature) htmlBody = htmlBody.replace(signature, "");
   const subject = resolveSubject(args.dataset.subject_strategy, args.row.subject_value, resolvedSubject.output);
   const missing = Array.from(new Set([...resolvedSubject.missing, ...resolvedBody.missing]));
