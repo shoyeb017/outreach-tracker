@@ -8,34 +8,17 @@ export interface Profile {
   full_name: string;
   email: string | null;
   avatar_url: string | null;
-  timezone: string;
-  location: string | null;
   onboarding_completed: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface SenderProfile {
-  id: string;
-  user_id: string;
-  sender_name: string;
-  designation: string | null;
-  organization: string | null;
-  company_phone: string | null;
-  mobile: string | null;
-  sender_email: string | null;
-  location: string | null;
-  company_address: string | null;
-  website: string | null;
-  signature_preset: "minimal" | "professional" | "compact" | "detailed" | "custom";
-  signature_settings: Record<string, Json>;
-}
-
 export interface SignatureField {
   id: string;
+  user_id: string;
   label: string;
   value: string;
-  field_type: "text" | "email" | "phone" | "url" | "location";
+  field_type: "text" | "email" | "phone" | "url" | "image";
   display_order: number;
   enabled: boolean;
   show_label: boolean;

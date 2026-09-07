@@ -113,13 +113,14 @@ The product name is configurable. Do not add `SUPABASE_SERVICE_ROLE_KEY`, a Micr
 1. Create a Supabase project.
 2. Open **SQL Editor**.
 3. Run `supabase/schema.sql`.
-4. Run `supabase/storage.sql` if users may retain original imports.
+4. Run `supabase/storage.sql` to enable original-file retention and signature-logo uploads.
 5. Run `supabase/seed_templates.sql`.
-6. In **Authentication → URL Configuration**, set the Site URL to the local or production app URL.
-7. Add `http://localhost:3000/auth/callback` and `https://YOUR_APP.vercel.app/auth/callback` to Redirect URLs.
-8. Copy the Project URL and publishable/anon key into `.env.local` and Vercel.
-9. Keep email confirmation enabled for production.
-10. Follow [supabase/README.md](supabase/README.md) to run the two-user RLS test.
+6. For an existing installation that still has a sender profile, run `supabase/migrations/20260907_dynamic_signature.sql` once, then run `supabase/migrations/20260907_signature_logo.sql`.
+7. In **Authentication → URL Configuration**, set the Site URL to the local or production app URL.
+8. Add `http://localhost:3000/auth/callback` and `https://YOUR_APP.vercel.app/auth/callback` to Redirect URLs.
+9. Copy the Project URL and publishable/anon key into `.env.local` and Vercel.
+10. Keep email confirmation enabled for production.
+11. Follow [supabase/README.md](supabase/README.md) to run the two-user RLS test.
 
 The exact SQL order is: **schema → storage → seed templates**. Storage is optional, but run it before enabling “Keep original imported file.”
 
@@ -128,16 +129,17 @@ The exact SQL order is: **schema → storage → seed templates**. Storage is op
 Registration calls Supabase Auth with email/password and a PKCE-compatible verification callback. The `on_auth_user_created` database trigger creates:
 
 - the `profiles` row;
-- the initial `sender_profiles` row;
 - `user_preferences` with live sending explicitly off.
 
 After verification, the callback exchanges the code for a Supabase session and opens onboarding. `proxy.ts` refreshes session cookies and redirects protected routes when no user is present. Forgot-password links return through the same callback and open the update-password form.
 
-## Sender profile and signature builder
+## Dynamic signature builder
 
-Application identity and sender identity remain separate. The sender profile contains name, title, organization, phones, sender email, address, website, and location. Custom signature fields add arbitrary text, email, phone, URL, or location values with independent labels, visibility, clickability, and order.
+The connected Microsoft 365 mailbox is always the actual From identity. There is no separate sender profile. The optional signature consists only of user-created lines; every line can be reordered, hidden, or deleted. Text lines can be bolded and labeled, links can be clickable, and logo lines can use an uploaded image or HTTPS URL with a dynamic 24–600 px width and optional click-through link.
 
-The builder supports Minimal, Professional, Compact, Detailed, and Custom presets. It generates conservative, inline-styled HTML suitable for common email clients. `{{signature}}` is resolved at render time, so future messages automatically use the current sender details.
+Uploaded signature logos are stored in the public `signature-assets` bucket because recipient email clients need unauthenticated access to display them. Uploads are limited to PNG, JPG, WebP, and GIF files of 2 MB or less; write and delete access remains restricted to the owning user folder.
+
+Nothing is hard-coded—not even “Best regards,”. An empty signature is valid, and `{{signature}}` resolves at render time to the exact currently enabled lines.
 
 ## Spreadsheet format and column mapping
 
@@ -159,7 +161,7 @@ Each dataset chooses one strategy:
 
 TipTap supports bold, italic, underline, strikethrough, lists, headings, blockquotes, links, alignment, undo/redo, and clear formatting. HTML is sanitized before persistence/rendering. Placeholders are resolved by a strict token parser; no `eval` or executable expressions are used.
 
-Placeholder groups include recipient data, sender/profile data, all imported custom fields, and the system signature. Unresolved placeholders block the affected row before queue creation.
+Suggested spreadsheet placeholders and all imported custom fields are available alongside the special `{{signature}}` token. Every placeholder other than `{{signature}}` must map to a spreadsheet column. Unresolved placeholders block the affected row before queue creation.
 
 System templates are readable and duplicable but not editable by regular users. Personal templates can be edited, archived, restored, and routed. Meaningful subject/body changes save the previous current content to `template_versions`; restoring a version preserves the displaced version as history.
 

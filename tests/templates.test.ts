@@ -6,12 +6,13 @@ import { rowTemplateData } from "@/lib/email/render";
 import { dataPlaceholdersForTemplates } from "@/lib/templates/dataset-mapping";
 
 describe("template resolution", () => {
-  it("resolves custom, nested profile, and signature placeholders without evaluation", () => {
-    const context = buildTemplateContext({ rowData: { company_name: "Northstar Labs", annual_revenue: "100" }, sender: { name: "Avery" }, signatureHtml: "<b>Avery</b>" });
-    const result = resolvePlaceholders("Hi {{company_name}} — {{annual_revenue}} — {{profile.name}} {{signature}} {{missing}}", context);
+  it("resolves spreadsheet and optional signature placeholders without evaluation", () => {
+    const context = buildTemplateContext({ rowData: { company_name: "Northstar Labs", annual_revenue: "100", contact_name: "Avery" }, signatureHtml: "<b>Avery</b>" });
+    const result = resolvePlaceholders("Hi {{company_name}} — {{annual_revenue}} — {{contact_name}} {{signature}} {{missing}}", context);
     expect(result.output).toContain("Northstar Labs — 100 — Avery <b>Avery</b>");
     expect(result.missing).toEqual(["missing"]);
     expect(extractPlaceholders(result.output)).toEqual(["missing"]);
+    expect(resolvePlaceholders("Body{{signature}}", buildTemplateContext({ rowData: {}, signatureHtml: "" })).missing).toEqual([]);
   });
 
   it("sanitizes dangerous HTML", () => {
@@ -48,8 +49,8 @@ describe("template resolution", () => {
     expect(data).toMatchObject({ decision_maker: "Jordan Lee", annual_revenue: "250000" });
   });
 
-  it("requires spreadsheet mapping only for non-sender placeholders", () => {
-    expect(dataPlaceholdersForTemplates([{ subject_template: "Hello {{company_name}}", html_body: "<p>{{decision_maker}} {{profile.name}} {{signature}}</p>", plain_text_body: null }])).toEqual(["company_name", "decision_maker"]);
+  it("requires spreadsheet mapping for everything except the complete signature", () => {
+    expect(dataPlaceholdersForTemplates([{ subject_template: "Hello {{company_name}}", html_body: "<p>{{decision_maker}} {{profile.name}} {{signature}}</p>", plain_text_body: null }])).toEqual(["company_name", "decision_maker", "profile.name"]);
   });
 
   it("resolves overrides, routing rules, fallback, and skip in order", () => {

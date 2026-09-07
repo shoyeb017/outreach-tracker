@@ -4,8 +4,10 @@
 
 1. Create a new Supabase project.
 2. In SQL Editor, run `schema.sql` in full.
-3. Run `storage.sql` if original spreadsheet retention will be available.
+3. Run `storage.sql` to enable original spreadsheet retention and signature-logo uploads.
 4. Run `seed_templates.sql`.
+
+For a database created before the dynamic-signature redesign, run `migrations/20260907_dynamic_signature.sql` once before deploying the matching application code. It converts existing sender details into reorderable signature lines, removes the old sender-profile table, and removes profile timezone/location columns. Then run `migrations/20260907_signature_logo.sql` to allow image lines and create the public, image-only `signature-assets` bucket.
 
 All files are designed to be rerunnable. The schema uses `if not exists`, replaces functions, and recreates policies/triggers by name. The seed uses a stable `seed_key` and never overwrites an existing template.
 
@@ -18,7 +20,7 @@ Enable Email/Password. For production, keep email confirmation enabled. Set:
 - Production Site URL: your final Vercel origin
 - Production redirect: `https://YOUR_APP.vercel.app/auth/callback`
 
-The auth trigger creates a profile, sender profile, and safe user preferences for each new account. It never creates Microsoft credentials and never enables live sending.
+The auth trigger creates an account profile and safe user preferences. It never creates Microsoft credentials or a separate sender identity, and it never enables live sending.
 
 ## Storage
 
@@ -33,7 +35,6 @@ Do not create a public bucket or public URL for business spreadsheets.
 ## Tables
 
 - `profiles`
-- `sender_profiles`
 - `signature_fields`
 - `microsoft_integrations`
 - `datasets`
@@ -56,7 +57,7 @@ Every user-owned table has select, insert, update, and delete policies based on 
 
 Use two separate browser profiles, create account A and account B, and obtain one dataset ID from each. Verify:
 
-1. Account A sees only A's datasets, rows, mappings, sender data, Microsoft identifiers, runs, history, preferences, and suppression records.
+1. Account A sees only A's datasets, rows, mappings, signature lines, Microsoft identifiers, runs, history, preferences, and suppression records.
 2. Account A can read system templates but cannot update or delete them.
 3. Account A cannot select account B's dataset by a known UUID.
 4. Account A cannot insert a `dataset_rows` or `dataset_columns` record linked to B's dataset; the owner guard must reject it.
@@ -70,7 +71,7 @@ Do not test RLS from SQL Editor while using the project-owner role: that role by
 
 `seed_templates.sql` creates a blank system template plus one active system template for each of the 23 approved industry taxonomy buckets. Category values match the routing labels exactly. Stable `seed_key` values make the seed rerunnable; rerunning it updates the managed industry copy without creating duplicate templates.
 
-Every industry template includes both HTML and plain-text content, greets `{{company_name}}`, and renders the current sender configuration through `{{signature}}`.
+Every industry template includes both HTML and plain-text content, greets `{{company_name}}`, and renders the optional dynamic signature through `{{signature}}`.
 
 ## Vercel variables
 

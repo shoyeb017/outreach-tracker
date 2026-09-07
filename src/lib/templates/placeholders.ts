@@ -24,6 +24,10 @@ export function resolvePlaceholders(input: string, context: Record<string, unkno
   const used = new Set<string>();
   const output = input.replace(TOKEN_PATTERN, (whole, path: string) => {
     const value = readPath(context, path);
+    if (path === "signature" && value !== undefined && value !== null) {
+      used.add(path);
+      return String(value);
+    }
     if (value === undefined || value === null || String(value).trim() === "") {
       missing.add(path);
       return whole;
@@ -42,8 +46,8 @@ export function sanitizeEmailHtml(html: string): string {
       .replace(/javascript:/gi, "");
   }
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "a", "span", "div"],
-    ALLOWED_ATTR: ["href", "target", "rel", "style"],
+    ALLOWED_TAGS: ["p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "a", "span", "div", "img"],
+    ALLOWED_ATTR: ["href", "target", "rel", "style", "src", "alt", "width", "height"],
     ALLOW_DATA_ATTR: false,
   });
 }
@@ -59,13 +63,10 @@ export function htmlToPlainText(html: string): string {
 
 export function buildTemplateContext(args: {
   rowData: Record<string, unknown>;
-  profile?: Record<string, unknown>;
-  sender?: Record<string, unknown>;
   signatureHtml?: string;
 }) {
   return {
     ...args.rowData,
-    profile: { ...(args.profile ?? {}), ...(args.sender ?? {}) },
     signature: args.signatureHtml ?? "",
   };
 }

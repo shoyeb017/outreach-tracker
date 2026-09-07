@@ -13,27 +13,7 @@ create table if not exists public.profiles (
   full_name text not null default '',
   email text,
   avatar_url text,
-  timezone text not null default 'UTC',
-  location text,
   onboarding_completed boolean not null default false,
-  created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now())
-);
-
-create table if not exists public.sender_profiles (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null unique references auth.users(id) on delete cascade,
-  sender_name text not null default '',
-  designation text,
-  organization text,
-  company_phone text,
-  mobile text,
-  sender_email text,
-  location text,
-  company_address text,
-  website text,
-  signature_preset text not null default 'professional' check (signature_preset in ('minimal','professional','compact','detailed','custom')),
-  signature_settings jsonb not null default '{"boldName":true,"showLabels":true}'::jsonb,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
@@ -43,7 +23,7 @@ create table if not exists public.signature_fields (
   user_id uuid not null references auth.users(id) on delete cascade,
   label text not null,
   value text not null default '',
-  field_type text not null default 'text' check (field_type in ('text','email','phone','url','location')),
+  field_type text not null default 'text' check (field_type in ('text','email','phone','url','image')),
   display_order integer not null default 0,
   enabled boolean not null default true,
   show_label boolean not null default true,
@@ -300,7 +280,7 @@ create index if not exists history_user_sent_idx on public.email_history(user_id
 create index if not exists history_recipient_template_idx on public.email_history(user_id, lower(recipient_email), template_id, status);
 
 do $$ declare t text; begin
-  foreach t in array array['profiles','sender_profiles','signature_fields','microsoft_integrations','templates','datasets','dataset_columns','dataset_placeholder_mappings','dataset_rows','column_mapping_profiles','template_versions','routing_rules','send_runs','send_run_items','email_history','suppression_list','user_preferences'] loop
+  foreach t in array array['profiles','signature_fields','microsoft_integrations','templates','datasets','dataset_columns','dataset_placeholder_mappings','dataset_rows','column_mapping_profiles','template_versions','routing_rules','send_runs','send_run_items','email_history','suppression_list','user_preferences'] loop
     execute format('alter table public.%I enable row level security', t);
   end loop;
 end $$;
@@ -313,7 +293,7 @@ drop policy if exists profiles_delete_own on public.profiles; create policy prof
 
 -- Uniform ownership policies for tables with a required user_id.
 do $$ declare t text; begin
-  foreach t in array array['sender_profiles','signature_fields','microsoft_integrations','datasets','dataset_columns','dataset_placeholder_mappings','dataset_rows','column_mapping_profiles','template_versions','routing_rules','send_runs','send_run_items','email_history','suppression_list','user_preferences'] loop
+  foreach t in array array['signature_fields','microsoft_integrations','datasets','dataset_columns','dataset_placeholder_mappings','dataset_rows','column_mapping_profiles','template_versions','routing_rules','send_runs','send_run_items','email_history','suppression_list','user_preferences'] loop
     execute format('drop policy if exists %I on public.%I', t || '_select_own', t);
     execute format('create policy %I on public.%I for select using (user_id = auth.uid())', t || '_select_own', t);
     execute format('drop policy if exists %I on public.%I', t || '_insert_own', t);
@@ -397,8 +377,8 @@ begin
   if not exists (select 1 from public.dataset_columns c where c.id = new.column_id and c.dataset_id = new.dataset_id and c.user_id = new.user_id) then
     raise exception 'Placeholder mapping column must belong to this dataset';
   end if;
-  if new.placeholder = 'signature' or new.placeholder like 'profile.%' then
-    raise exception 'Sender and signature placeholders cannot be mapped to spreadsheet columns';
+  if new.placeholder = 'signature' then
+    raise exception 'The signature placeholder cannot be mapped to a spreadsheet column';
   end if;
   return new;
 end;
@@ -449,10 +429,8 @@ create trigger email_history_link_guard before insert or update on public.email_
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles(id, full_name, email, timezone)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name',''), new.email, 'UTC') on conflict (id) do nothing;
-  insert into public.sender_profiles(user_id, sender_name, sender_email)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name',''), new.email) on conflict (user_id) do nothing;
+  insert into public.profiles(id, full_name, email)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name',''), new.email) on conflict (id) do nothing;
   insert into public.user_preferences(user_id, live_sending_enabled)
   values (new.id, false) on conflict (user_id) do nothing;
   return new;
@@ -477,7 +455,7 @@ drop trigger if exists template_version_before_update on public.templates;
 create trigger template_version_before_update before update on public.templates for each row execute function public.save_template_version();
 
 do $$ declare t text; begin
-  foreach t in array array['profiles','sender_profiles','signature_fields','microsoft_integrations','templates','datasets','dataset_columns','dataset_placeholder_mappings','dataset_rows','column_mapping_profiles','routing_rules','send_runs','send_run_items','suppression_list','user_preferences'] loop
+  foreach t in array array['profiles','signature_fields','microsoft_integrations','templates','datasets','dataset_columns','dataset_placeholder_mappings','dataset_rows','column_mapping_profiles','routing_rules','send_runs','send_run_items','suppression_list','user_preferences'] loop
     execute format('drop trigger if exists %I on public.%I', t || '_set_updated_at', t);
     execute format('create trigger %I before update on public.%I for each row execute function public.set_updated_at()', t || '_set_updated_at', t);
   end loop;
@@ -574,17 +552,15 @@ returns void language plpgsql set search_path = public, storage as $$
 declare me uuid := auth.uid();
 begin
   if me is null then raise exception 'Authentication required'; end if;
-  delete from storage.objects where bucket_id = 'imports' and (storage.foldername(name))[1] = me::text;
+  delete from storage.objects where bucket_id in ('imports', 'signature-assets') and (storage.foldername(name))[1] = me::text;
   delete from public.datasets where user_id = me;
   delete from public.templates where user_id = me;
   delete from public.column_mapping_profiles where user_id = me;
   delete from public.signature_fields where user_id = me;
   delete from public.microsoft_integrations where user_id = me;
   delete from public.suppression_list where user_id = me;
-  delete from public.sender_profiles where user_id = me;
   delete from public.user_preferences where user_id = me;
-  update public.profiles set full_name = '', avatar_url = null, location = null, onboarding_completed = false where id = me;
-  insert into public.sender_profiles(user_id, sender_name) values(me, '') on conflict (user_id) do nothing;
+  update public.profiles set full_name = '', avatar_url = null, onboarding_completed = false where id = me;
   insert into public.user_preferences(user_id, live_sending_enabled) values(me, false) on conflict (user_id) do nothing;
 end;
 $$;

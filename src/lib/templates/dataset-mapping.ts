@@ -2,7 +2,7 @@ import type { EmailTemplate, RoutingRule } from "@/types";
 import { extractPlaceholders } from "./placeholders";
 
 export function isSenderPlaceholder(placeholder: string) {
-  return placeholder === "signature" || placeholder.startsWith("profile.");
+  return placeholder === "signature";
 }
 
 export function templatePlaceholders(template: Pick<EmailTemplate, "subject_template" | "html_body" | "plain_text_body">) {

@@ -30,12 +30,6 @@ const standardPlaceholders = [
   { group: "Spreadsheet suggestions", label: "Website", token: "{{website}}" },
   { group: "Spreadsheet suggestions", label: "Location", token: "{{location}}" },
   { group: "Spreadsheet suggestions", label: "Spreadsheet subject", token: "{{subject}}" },
-  { group: "Profile data", label: "Sender name", token: "{{profile.name}}" },
-  { group: "Profile data", label: "Designation", token: "{{profile.designation}}" },
-  { group: "Profile data", label: "Organization", token: "{{profile.company}}" },
-  { group: "Profile data", label: "Email", token: "{{profile.email}}" },
-  { group: "Profile data", label: "Phone", token: "{{profile.phone}}" },
-  { group: "Profile data", label: "Website", token: "{{profile.website}}" },
   { group: "System", label: "Complete signature", token: "{{signature}}" },
 ];
 
@@ -134,7 +128,7 @@ export function TemplateForm({ template, duplicate = false }: { template?: Email
             <Link href="/templates"><Button type="button" variant="ghost" className="w-full"><ArrowLeft size={15} />Back to templates</Button></Link>
           </CardContent>
         </Card>
-        <Card><CardHeader><CardTitle>Automatically detected placeholders</CardTitle></CardHeader><CardContent>{used.length ? <div className="flex flex-wrap gap-2">{used.map((token) => <Badge key={token} tone="info">{`{{${token}}}`}</Badge>)}</div> : <p className="text-sm text-[#7a8581]">Type a placeholder in the subject, email body, or plain-text fallback and it will appear here automatically.</p>}<p className="mt-4 text-xs leading-5 text-[#68736f]">There is no fixed recipient-field list. Sender placeholders and the complete signature come from Settings; every other placeholder is connected to a spreadsheet column in the dataset.</p><Button type="button" className="mt-4 w-full" variant="outline" onClick={() => setHelp(true)}>Placeholder help</Button></CardContent></Card>
+        <Card><CardHeader><CardTitle>Automatically detected placeholders</CardTitle></CardHeader><CardContent>{used.length ? <div className="flex flex-wrap gap-2">{used.map((token) => <Badge key={token} tone="info">{`{{${token}}}`}</Badge>)}</div> : <p className="text-sm text-[#7a8581]">Type a placeholder in the subject, email body, or plain-text fallback and it will appear here automatically.</p>}<p className="mt-4 text-xs leading-5 text-[#68736f]">Only {`{{signature}}`} is supplied by Settings. Every other placeholder is connected to a spreadsheet column in the dataset. The From address always comes from Microsoft 365.</p><Button type="button" className="mt-4 w-full" variant="outline" onClick={() => setHelp(true)}>Placeholder help</Button></CardContent></Card>
         {help && <div className="fixed inset-0 z-50 grid place-items-center bg-[#10211b]/45 p-4" role="dialog" aria-modal="true"><Card className="w-full max-w-lg shadow-2xl"><CardHeader><CardTitle>Template placeholders</CardTitle></CardHeader><CardContent><div className="max-h-96 divide-y overflow-auto">{placeholders.map((item) => <div className="py-3" key={`${item.group}-${item.token}`}><code className="text-sm font-semibold text-[#176b55]">{item.token}</code><div className="mt-1 text-xs text-[#68736f]">{item.label} - {item.group}</div></div>)}</div><p className="mt-4 text-xs leading-5 text-[#68736f]">Suggestions are optional. Any placeholder typed with double braces is detected automatically. Dataset placeholders must be connected to spreadsheet columns before sending; missing values block only the affected rows.</p><Button type="button" className="mt-5 w-full" onClick={() => setHelp(false)}>Close</Button></CardContent></Card></div>}
         {preview && <Card><CardHeader><CardTitle>Email preview</CardTitle></CardHeader><CardContent><div className="border-b pb-3"><div className="text-[10px] font-bold uppercase text-[#8a9490]">Subject</div><div className="mt-1 text-sm font-semibold">{subject}</div></div><div className="pt-4 text-sm leading-6" dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(html) }} /></CardContent></Card>}
       </aside>
