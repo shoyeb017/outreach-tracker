@@ -12,6 +12,8 @@ Configure these as Graph **Delegated** permissions on the selected registration.
 
 Requests use Graph v1.0 `/me` endpoints. Microsoft pagination URLs are validated against the exact Graph origin and `/v1.0/me` path before attaching tokens. GET responses are not cached. Tokens and mailbox content are not saved in Supabase. Saved drafts and manual messages reside in Microsoft.
 
+Folder tabs map to Microsoft's locale-independent well-known names: Inbox → `inbox`, Sent → `sentitems`, Drafts → `drafts`, Junk email → `junkemail`. Junk reads `/me/mailFolders/junkemail/messages`, newest received first, with existing delegated `Mail.Read`; no new consent scope or SQL migration is needed. Inbox and Junk rows show senders and support the unread filter. Junk uses the same protected message reader, attachments, search, pagination, and explicit read-status actions. Moving messages or marking them as not junk remains an Outlook operation. See [Microsoft's well-known folder names](https://learn.microsoft.com/en-us/graph/api/resources/mailfolder?view=graph-rest-1.0).
+
 ## Safety and limitations
 
 - Untrusted message HTML uses DOMPurify, a sandboxed iframe without scripts or same-origin privileges, and a CSP that denies network/image loads. Outlook links use a strict host allowlist. Remote CSS URLs are removed from forwarded content.

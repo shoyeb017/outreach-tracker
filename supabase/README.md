@@ -24,8 +24,12 @@ Enable Email/Password. For production, keep email confirmation enabled. Set:
 
 - Local Site URL: `http://localhost:3000`
 - Local redirect: `http://localhost:3000/auth/callback`
-- Production Site URL: your final Vercel origin
-- Production redirect: `https://YOUR_APP.vercel.app/auth/callback`
+- Production Site URL: `https://autmail.vercel.app`
+- Production redirect: `https://autmail.vercel.app/auth/callback`
+
+Set the production values under **Authentication → URL Configuration**. Also allow the application's explicit confirmation/reset destinations: `https://autmail.vercel.app/auth/callback?next=/onboarding` and `https://autmail.vercel.app/auth/callback?next=/update-password`. Keep localhost redirects only for intentional development access; do not set localhost as the production Site URL.
+
+`https://autmail.vercel.app/settings` belongs to the Microsoft Entra **Single-page application** redirect list, not this Supabase callback flow. See the [production domain setup manual](../docs/deployment.md) and [Supabase redirect documentation](https://supabase.com/docs/guides/auth/redirect-urls).
 
 The auth trigger creates an account profile and safe user preferences. It never creates Microsoft credentials or a separate sender identity, and it never enables live sending.
 
@@ -97,7 +101,7 @@ Use the values in [`.env.example`](../.env.example). Only the first three are pu
 ```dotenv
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-NEXT_PUBLIC_APP_URL=https://YOUR_APP.vercel.app
+NEXT_PUBLIC_APP_URL=https://autmail.vercel.app
 SUPABASE_SERVICE_ROLE_KEY=
 ADMIN_LOGIN_EMAIL=
 ADMIN_LOGIN_PASSWORD=

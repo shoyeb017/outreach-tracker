@@ -10,9 +10,11 @@ The connected address is shown above your mailbox and in the Compose window. You
 
 ## Read and find email
 
-Choose **Inbox**, **Sent**, or **Drafts**. Click a message to see its sender, recipients, subject, date, body, and attachments. On a phone, use **Back to messages** to return to the list.
+Choose **Inbox**, **Sent**, **Drafts**, or **Junk email**. Click a message to see its sender, recipients, subject, date, body, and attachments. On a phone, use **Back to messages** to return to the list.
 
-Search and the unread filter apply to loaded messages. Use **Load more messages** to include older mail in your search. **Refresh** fetches the latest first page; there is no background real-time synchronization.
+Search applies to loaded messages; **Unread only** is available in Inbox and Junk email. Use **Load more messages** to include older mail in your search. **Refresh** fetches the latest first page; there is no background real-time synchronization.
+
+**Junk email** shows the connected Microsoft mailbox's Junk folder, separately from Inbox, using the same `Mail.Read` permission. Be careful with unexpected links and attachments; images stay blocked here. To move a message back to Inbox or mark it as not junk, use **Open in Outlook**.
 
 Reading a message does not change its status automatically. Use **Mark read** or **Mark unread** explicitly; these changes ask for the additional `Mail.ReadWrite` permission if it has not been approved. External images and tracking pixels are blocked. Use **Open in Outlook** for the original layout, images, large attachments, or attached Outlook items. Downloads here are limited to 10 MB per file; open only files you trust.
 

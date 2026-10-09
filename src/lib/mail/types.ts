@@ -1,4 +1,4 @@
-export type MailFolder = "inbox" | "sentitems" | "drafts";
+export type MailFolder = "inbox" | "sentitems" | "drafts" | "junkemail";
 export interface MailAddress { emailAddress: { address: string; name?: string } }
 export interface MailMessage {
   id: string; subject: string; bodyPreview: string; isRead: boolean; isDraft: boolean;

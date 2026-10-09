@@ -4,7 +4,7 @@ AUTMAIL accesses the Microsoft mailbox you connect, using **delegated permission
 
 - **`User.Read` — identify the sender.** Requested when you connect. Verifies the signed-in account.
 - **`Mail.Send` — send email.** Requested when you connect; renewed if required before sending. Used for campaigns and new manually written emails.
-- **`Mail.Read` — read your mailbox.** Requested through **Enable mailbox access** in Inbox. Reads Inbox, Sent, Drafts, bodies, and attachments.
+- **`Mail.Read` — read your mailbox.** Requested through **Enable mailbox access** in Inbox. Reads Inbox, Sent, Drafts, Junk email, bodies, and attachments.
 - **`Mail.ReadWrite` — change your mailbox.** Requested when you explicitly save/edit drafts, create reply/forward drafts, or mark messages read/unread.
 
 **Compose does not require Inbox access.** You can write and send a new email with `User.Read` and `Mail.Send`, even if you have not enabled reading. `Mail.Send` also lets Microsoft save a copy in Sent Items without giving AUTMAIL permission to read that folder. Saving a draft is optional; it needs `Mail.ReadWrite`. Sending edits to an existing draft also needs that writing permission.

@@ -20,7 +20,7 @@ No client secret, manual authentication mode, or metadata reader is needed for t
 
 To write an individual email, open **Compose email**. Your connected address is filled in as the sender; enter To, optional Cc/Bcc, subject, and message, then review and confirm sending. You do not need to enable Inbox first.
 
-To read Inbox, Sent, or Drafts, open **Inbox → Enable mailbox access** and approve delegated `Mail.Read`. Saving/editing drafts, reply/forward drafts, and read-status changes ask separately for `Mail.ReadWrite`. If Microsoft asks for administrator approval, your organization's consent policy may require it even for your own mailbox. See [Permissions explained](/help/permissions) for the exact steps.
+To read Inbox, Sent, Drafts, or Junk email, open **Inbox → Enable mailbox access** and approve delegated `Mail.Read`. Saving/editing drafts, reply/forward drafts, and read-status changes ask separately for `Mail.ReadWrite`. If Microsoft asks for administrator approval, your organization's consent policy may require it even for your own mailbox. See [Permissions explained](/help/permissions) for the exact steps.
 
 ## Test without sending
 

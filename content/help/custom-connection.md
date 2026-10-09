@@ -4,7 +4,7 @@ Use this optional path only when you own or are authorized to use an Entra app r
 
 Follow [Microsoft Entra setup](/help/microsoft-setup). Configure the exact website Settings URL as a **Single-page application** redirect and add delegated `User.Read` and `Mail.Send` permissions.
 
-Those permissions are enough for campaigns and new Compose emails. Add delegated `Mail.Read` to read your own Inbox, Sent, and Drafts. Add `Mail.ReadWrite` only for draft changes, reply/forward drafts, or marking mail read/unread. Organization consent policy applies to custom registrations too; owning the IDs does not bypass administrator approval. See [Permissions explained](/help/permissions).
+Those permissions are enough for campaigns and new Compose emails. Add delegated `Mail.Read` to read your own Inbox, Sent, Drafts, and Junk email. Add `Mail.ReadWrite` only for draft changes, reply/forward drafts, or marking mail read/unread. Organization consent policy applies to custom registrations too; owning the IDs does not bypass administrator approval. See [Permissions explained](/help/permissions).
 
 Copy the **Application (client) ID** and **Directory (tenant) ID** from that same registration’s Overview. Do not use its Object ID, a guessed tenant, or a client secret.
 

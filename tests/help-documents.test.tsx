@@ -6,6 +6,14 @@ import { DocumentArticle } from "@/components/help/document-article";
 import { GET } from "@/app/help/[topic]/markdown/route";
 afterEach(cleanup);
 describe("Markdown help documentation", () => {
+  it("explains the production domain and keeps Microsoft and Supabase redirects distinct", async () => {
+    const guide = (await readHelpDocument("microsoft-setup"))!;
+    expect(guide.markdown).toContain("NEXT_PUBLIC_APP_URL=https://autmail.vercel.app");
+    expect(guide.markdown).toContain("register exactly **`https://autmail.vercel.app/settings`**");
+    expect(guide.markdown).toContain("**`https://autmail.vercel.app/auth/callback` is the Supabase authentication redirect**");
+    render(<DocumentArticle document={guide} />);
+    expect(screen.getByRole("link", { name: "autmail.vercel.app" })).toHaveAttribute("href", "https://autmail.vercel.app");
+  });
   it("explains minimal mailbox permissions and organization approval without gating Compose", async () => {
     const permissions = (await readHelpDocument("permissions"))!.markdown;
     expect(permissions).toContain("**Compose does not require Inbox access.**");

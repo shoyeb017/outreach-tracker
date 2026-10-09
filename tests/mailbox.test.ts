@@ -25,6 +25,24 @@ describe("Microsoft mailbox boundary", () => {
     expect(fetcher.mock.calls[0][0]).toContain("/me/mailFolders/inbox/messages?"); expect(fetcher.mock.calls[0][0]).toContain("%24top=25");
   });
   it("only enables interactive consent on an explicit enable action", async () => { await createMailboxClient(integration).enable(); expect(acquireGraphToken).toHaveBeenCalledWith("tenant", "client", false, expect.objectContaining({ interactive: true })); });
+  it("reads Junk email newest first with existing read permission and follows its pages", async () => {
+    const message = { id: "junk-1", subject: "Unexpected offer" };
+    const next = "https://graph.microsoft.com/v1.0/me/mailFolders/junkemail/messages?$skip=25";
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(Response.json({ value: [message], "@odata.nextLink": next }))
+      .mockResolvedValueOnce(Response.json({ value: [] }))
+      .mockResolvedValueOnce(Response.json({ ...message, body: { contentType: "HTML", content: "<p>Offer</p>" } }));
+    const client = createMailboxClient(integration, fetcher);
+    const page = await client.list("junkemail");
+    const url = new URL(fetcher.mock.calls[0][0]);
+    expect(url.pathname).toBe("/v1.0/me/mailFolders/junkemail/messages");
+    expect(url.searchParams.get("$orderby")).toBe("receivedDateTime desc");
+    expect(page).toEqual({ messages: [message], next });
+    await client.list("junkemail", page.next);
+    expect(fetcher.mock.calls[1][0]).toBe(next);
+    expect((await client.get(message.id)).body?.content).toBe("<p>Offer</p>");
+    for (const call of vi.mocked(acquireGraphToken).mock.calls) expect(call[3]).toEqual({ scopes: ["User.Read", "Mail.Read"], interactive: false });
+  });
   it("orders drafts by their latest edit and Sent by sending time", async () => {
     const fetcher = vi.fn().mockImplementation(async () => Response.json({ value: [] })); const client = createMailboxClient(integration, fetcher);
     await client.list("drafts"); await client.list("sentitems");

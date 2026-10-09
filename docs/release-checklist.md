@@ -21,11 +21,11 @@ Developer UI tests use `npm run build:test-ui`. They are explicitly isolated fro
 
 ## Hosting configuration
 
-- Set the six deployment entries from `.env.example` in the hosting provider. Use the actual HTTPS website origin for `NEXT_PUBLIC_APP_URL`.
+- Set the six deployment entries from `.env.example` in Vercel. Production uses `NEXT_PUBLIC_APP_URL=https://autmail.vercel.app` (no path or trailing slash); redeploy after changing it.
 - Use only the public anon/publishable Supabase key in `NEXT_PUBLIC_SUPABASE_ANON_KEY`. `SUPABASE_SERVICE_ROLE_KEY` is server-only.
 - Set `ADMIN_LOGIN_EMAIL` and a strong, unique `ADMIN_LOGIN_PASSWORD` server-side. Verify the shared sign-in, expiration, logout, and password rotation. No hash script or separate Supabase admin signup is required. If intentionally retaining provider mode with the environment password unset, verify the Supabase account and enabled `application_administrators` role instead. Remove both admin values to disable access entirely.
-- Configure Supabase Site URL and the deployed `/auth/callback` redirect. Configure each approved preview/custom domain deliberately.
-- Add the exact deployed `/settings` SPA redirect to the selected Entra registration.
+- Set the Supabase Site URL to `https://autmail.vercel.app` and allow `https://autmail.vercel.app/auth/callback`, including the explicit confirmation/reset destinations documented in [production setup](deployment.md). Configure each approved preview/custom domain deliberately.
+- Add `https://autmail.vercel.app/settings` as a **Single-page application** redirect to every Entra registration used on production, including allowed personal registrations. Do not substitute the Supabase callback.
 - Verify delegated `User.Read`/`Mail.Send`; add `Mail.Read` for mailbox reading and `Mail.ReadWrite` for draft/read-status changes. Follow company consent policy. See the in-app permission guide.
 - Optional backend registration metadata detection is documented separately in `admin-microsoft-setup.md`; it is not required for ordinary Microsoft sign-in or sending.
 
@@ -45,7 +45,7 @@ Developer UI tests use `npm run build:test-ui`. They are explicitly isolated fro
 - Verify template creation/edit/archive, signature ordering/logo sizing, dataset selection, and history previews.
 - Run a practice campaign and confirm it issues no Graph send request. Changing Settings must not turn a resumed practice into a real send.
 - Verify suppression, duplicate protection, selected sender binding, expired session recovery, and admin consent.
-- Open Inbox/Sent/Drafts, verify reading-only consent, then compose a new email without Inbox access. Check To/Cc/Bcc, attachments, drafts, and native replies.
+- Open Inbox/Sent/Drafts/Junk email, verify reading-only consent, then compose a new email without Inbox access. Check To/Cc/Bcc, attachments, drafts, and native replies. Confirm Junk rows show the sender, the unread filter works, and message images remain blocked.
 - Any real test email needs explicit approval and a controlled recipient. Check Sent Items and the recipient inbox; Graph acceptance is not proof of delivery.
 - Force an uncertain send response. The application must pause or lock retries until the operator checks the actual mailbox.
 - Check light/dark themes, phone/tablet/desktop layouts, keyboard navigation, dialog focus, reduced motion, and long text.

@@ -30,6 +30,8 @@ Personal-account audiences require a compatible `api.requestedAccessTokenVersion
 
 Open **Authentication → Add a platform → Single-page application**. Register this website’s exact origin plus `/settings`. The copy button below supplies the configured website address.
 
+For the AUTMAIL production website, register exactly **`https://autmail.vercel.app/settings`**. The website itself is [autmail.vercel.app](https://autmail.vercel.app). **`https://autmail.vercel.app/auth/callback` is the Supabase authentication redirect**, not this Microsoft mailbox redirect. The application administrator configures the production origin as `NEXT_PUBLIC_APP_URL=https://autmail.vercel.app` and sets the Supabase Site URL separately.
+
 Match protocol, domain, port, and path. Register your deployed custom domain separately from localhost. Do not use the Web platform, `/auth/callback`, or a client secret for this delegated popup flow.
 
 For local development, use the actual browser origin and port plus `/settings`. The application’s configured public URL must match the website you use.
@@ -40,7 +42,7 @@ Installed MSAL Browser 4.x uses popup sign-in and preserves `/settings`. A futur
 
 Open **API permissions → Add a permission → Microsoft Graph → Delegated permissions**. Add `User.Read` and `Mail.Send`. Adding a permission is different from granting consent; your organization may require administrator approval.
 
-For optional **Inbox, Sent, and Drafts reading**, add delegated `Mail.Read`. Users request it separately by clicking **Enable mailbox access** in Inbox. For saving/editing drafts, creating reply/forward drafts, and changing read status, add delegated `Mail.ReadWrite`; it is requested when users choose those actions. A new Compose email and spreadsheet campaigns need only `User.Read` and `Mail.Send`.
+For optional **Inbox, Sent, Drafts, and Junk email reading**, add delegated `Mail.Read`. Users request it separately by clicking **Enable mailbox access** in Inbox. For saving/editing drafts, creating reply/forward drafts, and changing read status, add delegated `Mail.ReadWrite`; it is requested when users choose those actions. A new Compose email and spreadsheet campaigns need only `User.Read` and `Mail.Send`.
 
 Organization policy can require administrator approval even for a user's own mailbox. See [Permissions explained](/help/permissions) for exact user and administrator steps. Do not add Application mailbox permissions or directory-wide reading as a workaround.
 
@@ -59,3 +61,4 @@ Connect the intended mailbox and check the sender address. Run **Test connection
 - [Register an application](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app)
 - [Supported account types](https://learn.microsoft.com/en-us/entra/identity-platform/v2-supported-account-types)
 - [Graph permissions](https://learn.microsoft.com/en-us/graph/permissions-reference)
+- [Microsoft redirect URI requirements](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url)

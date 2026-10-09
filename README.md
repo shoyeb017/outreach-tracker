@@ -9,9 +9,9 @@
 
 AUTMAIL brings spreadsheet-based outreach, reusable email templates, signatures, and a lightweight mail workspace into one application. It helps teams send individual, personalized messages without repeatedly copying names, company details, and email addresses by hand.
 
-You can also read your **Inbox, Sent, and Drafts** or **compose a single email** without uploading a spreadsheet.
+You can also read your **Inbox, Sent, Drafts, and Junk email** or **compose a single email** without uploading a spreadsheet.
 
-[How it works](#how-it-works) · [Product tour](#product-tour) · [Get started](#get-started) · [Microsoft connection](#microsoft-connection) · [Deployment](#deployment) · [Documentation](#documentation)
+[Open AUTMAIL](https://autmail.vercel.app) · [How it works](#how-it-works) · [Product tour](#product-tour) · [Get started](#get-started) · [Microsoft connection](#microsoft-connection) · [Deployment](#deployment) · [Documentation](#documentation)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="src/styles/readme/landing-dark.png">
@@ -27,7 +27,7 @@ You can also read your **Inbox, Sent, and Drafts** or **compose a single email**
 - **Create a flexible signature:** add and reorder text, links, and logos with adjustable image sizes.
 - **Review before sending:** select recipients and inspect the actual From, To, subject, message, and missing values.
 - **Track campaign results:** inspect saved message snapshots, failures, uncertain outcomes, and recipient exports.
-- **Use your mailbox:** read Inbox/Sent/Drafts, reply or forward, save drafts, and compose messages with To/Cc/Bcc and attachments.
+- **Use your mailbox:** read Inbox/Sent/Drafts/Junk email, reply or forward, save drafts, and compose messages with To/Cc/Bcc and attachments.
 - **Manage the application:** configure the shared Microsoft registration in the admin portal; users can choose an allowed personal registration instead.
 - **Manage user accounts:** view workspace metrics, search accounts, inspect usage, disconnect saved senders, and permanently delete an account and its owned data with confirmation and resumable cleanup. Administrator actions are audited.
 - **Work comfortably:** responsive phone/tablet/desktop layouts, light/dark themes, keyboard navigation, and in-app help.
@@ -132,7 +132,7 @@ Copy [`.env.example`](.env.example) to an uncommitted `.env.local` and fill in i
 | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public anon/publishable key; never a secret/service-role key |
-| `NEXT_PUBLIC_APP_URL` | Exact application origin; use your deployed HTTPS origin in production |
+| `NEXT_PUBLIC_APP_URL` | Exact application origin; production: `https://autmail.vercel.app` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only key for protected configuration, security limits, and audit records |
 | `ADMIN_LOGIN_EMAIL` | Administrator email used on the shared sign-in page |
 | `ADMIN_LOGIN_PASSWORD` | Server-only administrator password; use a long, unique password |
@@ -171,14 +171,14 @@ Open the configured local origin. For the usual development port, set `NEXT_PUBL
 3. The user connects their intended Microsoft mailbox. That mailbox becomes the sender automatically.
 4. Use **Test connection** to check the account without sending. **Send real test email** is a separate, explicit real send to an inbox you control.
 
-Add the exact application `/settings` URL as a **Single-page application** redirect in Entra. `/auth/callback` is for Supabase sign-in, not the Microsoft popup.
+Add `https://autmail.vercel.app/settings` as a **Single-page application** redirect in Entra. `https://autmail.vercel.app/auth/callback` is for Supabase authentication, not the Microsoft popup. Other deployments must register their own exact URLs.
 
 Microsoft Graph permissions are **delegated**, acting as the signed-in user:
 
 | Capability | Permissions |
 | --- | --- |
 | Basic account access and new-email sending | `User.Read` + `Mail.Send` |
-| Inbox, Sent, Drafts, and message reading | Add `Mail.Read` |
+| Inbox, Sent, Drafts, Junk email, and message reading | Add `Mail.Read` |
 | Saving/editing drafts, native reply/forward drafts, and read-status changes | Add `Mail.ReadWrite` |
 
 Compose can send a new email **without enabling Inbox access**. Microsoft organizational policy can still require administrator consent, even for your own mailbox. Saving IDs in AUTMAIL does not grant Microsoft consent. A client secret is not needed for the ordinary delegated sending flow.
@@ -191,7 +191,7 @@ See [Microsoft setup](content/help/microsoft-setup.md), [permissions and admin a
 - **Duplicate protection:** the same normalized recipient address plus template is a campaign duplicate. Blocking is the default; Warn/Allow are deliberate alternatives. The Do not email list blocks normal sends.
 - **Uncertain outcomes are not retried automatically:** interruptions can occur after Microsoft accepts a message. Check Sent Items before deciding to retry. Explicit throttling responses use bounded retries.
 - **Microsoft acceptance is not delivery confirmation:** a successful API response does not prove arrival in the recipient inbox.
-- **Campaign history and mailbox folders are different:** campaign history saves outreach snapshots/results; Inbox/Sent/Drafts reflect the connected Microsoft mailbox.
+- **Campaign history and mailbox folders are different:** campaign history saves outreach snapshots/results; Inbox/Sent/Drafts/Junk email reflect the connected Microsoft mailbox.
 - **Mailbox scope is limited:** search applies to loaded messages; drafts save explicitly, not automatically. Delete/archive, scheduled send, notifications, and Gmail integration are not implemented.
 - **Attachments have limits:** new Compose messages allow up to ten files and 2 MB total. Existing-draft attachments are managed through Outlook. Explicit downloads are capped at 10 MB.
 - **Data and credentials:** user-owned records use Supabase RLS; original spreadsheets are private. Uploaded signature assets are public so email clients can display them. Microsoft tokens stay in MSAL session storage, not Supabase; mailbox content is not persisted there.
@@ -203,10 +203,20 @@ See the [sending safety guide](content/help/safety.md) and [mailbox implementati
 
 Deploy the normal Next.js application to Vercel:
 
+The production website is [autmail.vercel.app](https://autmail.vercel.app). Keep these settings distinct:
+
+| Setting | Production value |
+| --- | --- |
+| Vercel `NEXT_PUBLIC_APP_URL` and Supabase Site URL | `https://autmail.vercel.app` |
+| Microsoft Entra SPA redirect | `https://autmail.vercel.app/settings` |
+| Supabase authentication redirect | `https://autmail.vercel.app/auth/callback` |
+
+Follow the [production domain setup manual](docs/deployment.md) for exact provider settings, confirmation/reset redirects, and domain-change checks. Editing repository documentation does not update the hosted provider settings.
+
 1. Apply and verify the required SQL migrations and storage policies.
 2. Import the GitHub repository into Vercel.
-3. Set the six environment values from `.env.example`. Use the actual HTTPS deployment origin.
-4. Configure Supabase Site URL/`/auth/callback` and the matching Entra `/settings` SPA redirect.
+3. Set the six environment values from `.env.example`, including `NEXT_PUBLIC_APP_URL=https://autmail.vercel.app` for production.
+4. Configure the Supabase and Microsoft redirect URLs listed above.
 5. Use the normal `npm run build` command, then complete the [release checklist](docs/release-checklist.md).
 
 Deploying code does **not** apply Supabase migrations. Build success alone does not verify deployed RLS, Microsoft consent, or real delivery. Missing production configuration fails the build instead of opening a demo workspace.
@@ -261,6 +271,7 @@ The screenshot helper binds only to `127.0.0.1:3107`, strips service credentials
 | [Account management](docs/admin-account-management.md) | User directory, protected account controls, deletion, and cleanup retries |
 | [Supabase setup](supabase/README.md) | SQL execution order, auth, storage, and two-user RLS checks |
 | [Release checklist](docs/release-checklist.md) | Deployment verification and operational limitations |
+| [Production domain setup](docs/deployment.md) | Vercel environment, Supabase authentication, and Microsoft redirect URLs |
 | [UI design system](docs/ui-design-system.md) | Theme tokens, responsive layout, motion, and accessibility |
 | [Landing and Help maintenance](docs/landing-and-help.md) | Branding, animation, and editable Markdown documentation |
 
