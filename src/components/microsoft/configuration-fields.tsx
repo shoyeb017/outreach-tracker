@@ -1,0 +1,13 @@
+"use client";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import type { MicrosoftConfiguration } from "@/lib/microsoft/authority";
+export function ConfigurationFields({ initial, fallbackVisible = true }: { initial?: Partial<MicrosoftConfiguration> | null; fallbackVisible?: boolean }) {
+  return <div className="space-y-5">
+    <div><Label htmlFor="configuration-name">Configuration name · optional</Label><Input id="configuration-name" name="name" defaultValue={initial?.name ?? ""} maxLength={100} placeholder="e.g. Company Microsoft app" /></div>
+    <div><Label htmlFor="configuration-client">Application (Client) ID</Label><Input id="configuration-client" name="client_id" defaultValue={initial?.client_id ?? ""} required placeholder="Paste the Client ID from Entra Overview" /></div>
+    <div><Label htmlFor="configuration-tenant">Directory (Tenant) ID</Label><Input id="configuration-tenant" name="tenant_id" defaultValue={initial?.tenant_id ?? ""} placeholder="Paste the registration's owning Tenant ID" /><p className="mt-2 text-xs text-[var(--muted-foreground)]">Required for organizational registrations. If a personal-only registration has no directory ID, leave blank and explicitly choose Personal Microsoft accounts only in the fallback below. The shared Microsoft personal-account tenant is used, not a guessed company tenant.</p></div>
+    {fallbackVisible && <details open={Boolean(initial?.fallback_audience)} className="rounded-xl border p-4"><summary className="cursor-pointer font-semibold">Advanced account restrictions · optional</summary><p className="my-3 text-sm text-[var(--muted-foreground)]">Normally leave Automatic sign-in selected: you can save your IDs and connect without a metadata reader. Microsoft still enforces the app’s supported accounts. Choose an override only when you know the Supported account types setting in Entra. An override is not verified metadata.</p><Label htmlFor="configuration-fallback">Supported account types shown in Entra</Label><Select id="configuration-fallback" name="fallback_audience" defaultValue={initial?.fallback_audience ?? ""}><option value="">Automatic sign-in (recommended)</option><option value="AzureADMyOrg">One organization (single tenant)</option><option value="AzureADMultipleOrgs">Multiple organizations</option><option value="AzureADandPersonalMicrosoftAccount">Organizations and personal Microsoft accounts</option><option value="PersonalMicrosoftAccount">Personal Microsoft accounts only</option></Select></details>}
+  </div>;
+}

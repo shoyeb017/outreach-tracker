@@ -44,3 +44,10 @@ export function renderSignature(
   if (!lines.length) return "";
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.45;color:#26322f;margin-top:18px">${lines.join("")}</div>`;
 }
+
+export function renderPlainTextSignature(fields: SignatureField[] = []) {
+  return [...fields].filter((field) => field.enabled && field.value.trim() && field.field_type !== "image")
+    .sort((a, b) => a.display_order - b.display_order)
+    .map((field) => `${field.show_label && field.label.trim() ? field.label + ": " : ""}${field.value}`)
+    .join("\n");
+}

@@ -4,12 +4,26 @@ import { SignatureBuilder } from "@/components/signature/signature-builder";
 import { MicrosoftSettings } from "@/components/microsoft/microsoft-settings";
 import { SendingSettings } from "@/components/settings/sending-settings";
 import { DataPrivacySettings } from "@/components/settings/data-privacy-settings";
+import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { privilegedDatabase } from "@/lib/admin/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const supabase = await getSupabaseServerClient();
+  let microsoftDefaults = null; let microsoftConfigurations = []; let microsoftSetupError = "";
+  if (supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      try {
+        const database = privilegedDatabase();
+        const [defaults, owned] = await Promise.all([database.from("microsoft_default_configuration").select("*").maybeSingle(), database.from("microsoft_user_configurations").select("*").eq("user_id", user.id).order("name")]);
+        if (defaults.error || owned.error) throw new Error("Microsoft setup needs the new database migration. Contact the application administrator.");
+        microsoftDefaults = defaults.data; microsoftConfigurations = owned.data ?? [];
+      } catch (error) { microsoftSetupError = error instanceof Error ? error.message : "Microsoft setup is unavailable."; }
+    }
+  }
   const [profile, fields, integration, preferences, suppressions] = supabase ? await Promise.all([
     supabase.from("profiles").select("*").maybeSingle(),
     supabase.from("signature_fields").select("*").order("display_order"),
@@ -20,21 +34,14 @@ export default async function SettingsPage() {
 
   return (
     <main className="page-shell">
-      <PageHeader eyebrow="Workspace" title="Settings" description="Manage your account, fully custom signature, Microsoft sending account, sending controls, and privacy preferences." />
-      <div className="grid gap-7 xl:grid-cols-[190px_minmax(0,1fr)]">
-        <nav className="hidden xl:block">
-          <div className="sticky top-24 space-y-1 text-sm">
-            {[["#account", "Account"], ["#signature", "Signature"], ["#microsoft", "Microsoft 365"], ["#sending", "Sending"], ["#privacy", "Data & privacy"]].map(([href, label]) => <a key={href} className="block rounded-lg px-3 py-2 text-[#596561] hover:bg-white hover:text-[#176b55]" href={href}>{label}</a>)}
-          </div>
-        </nav>
-        <div className="space-y-7">
-          <ProfileSettings profile={profile.data ?? {}} />
-          <SignatureBuilder initialFields={fields.data ?? []} microsoftEmail={integration.data?.connected_email} />
-          <MicrosoftSettings integration={integration.data} />
-          <SendingSettings preferences={preferences.data ?? {}} />
-          <DataPrivacySettings initialSuppressions={suppressions.data ?? []} />
-        </div>
-      </div>
+      <PageHeader eyebrow="Workspace" title="Settings" description="Choose a section below to manage your email account, signature, and preferences." />
+      <SettingsTabs panels={{
+        microsoft: <MicrosoftSettings integration={integration.data} defaults={microsoftDefaults} configurations={microsoftConfigurations} setupError={microsoftSetupError} />,
+        signature: <SignatureBuilder initialFields={fields.data ?? []} microsoftEmail={integration.data?.connected_email} />,
+        sending: <SendingSettings preferences={preferences.data ?? {}} />,
+        account: <ProfileSettings profile={profile.data ?? {}} />,
+        privacy: <DataPrivacySettings initialSuppressions={suppressions.data ?? []} />,
+      }} />
     </main>
   );
 }

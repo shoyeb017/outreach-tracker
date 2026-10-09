@@ -12,7 +12,8 @@ export default async function ImportPage() {
       supabase.from("user_preferences").select("keep_original_file").maybeSingle(),
       supabase.from("column_mapping_profiles").select("id,name,mappings,routing_key_label,routing_rules,subject_strategy").order("name"),
     ]);
+    if (templateResult.error || preferenceResult.error || mappingResult.error) throw new Error("Could not load spreadsheet setup. Please try again.");
     templates = templateResult.data ?? []; mappingProfiles = mappingResult.data ?? []; keepOriginal = preferenceResult.data?.keep_original_file ?? false;
   }
-  return <main className="page-shell"><PageHeader eyebrow="New dataset" title="Import a spreadsheet" description="Preview and configure everything before data is written to your workspace." /><ImportWizard templates={templates} mappingProfiles={mappingProfiles} keepOriginalDefault={keepOriginal} /></main>;
+  return <main className="page-shell"><PageHeader eyebrow="Spreadsheets" title="New spreadsheet" description="Upload your file, connect the right columns, and choose your email templates. No emails are sent here." /><ImportWizard templates={templates} mappingProfiles={mappingProfiles} keepOriginalDefault={keepOriginal} /></main>;
 }

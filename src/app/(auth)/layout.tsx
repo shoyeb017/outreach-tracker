@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Send } from "lucide-react";
-import { productName } from "@/lib/utils";
+import { BrandLogo } from "@/components/brand/brand-logo";
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  return <main className="grid min-h-screen grid-rows-[auto_1fr] bg-[#f6f8f7]"><nav className="px-6 py-5"><Link className="inline-flex items-center gap-3 font-semibold" href="/"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#176b55] text-white"><Send size={17} /></span>{productName}</Link></nav><div className="flex items-center justify-center px-5 pb-16">{children}</div></main>;
+  return <main className="grid min-h-screen grid-rows-[auto_1fr]"><nav className="mx-auto flex w-full max-w-[1160px] items-center justify-between gap-3 border-b px-5 py-4"><Link className="focus-ring" href="/" aria-label="AUTMAIL landing page"><BrandLogo /></Link><ThemeToggle /></nav><div className="flex items-start justify-center px-5 pb-16 pt-12 sm:pt-20">{children}</div></main>;
 }

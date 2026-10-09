@@ -110,6 +110,13 @@ export interface RoutingRule {
 }
 
 export interface MicrosoftIntegration {
+  configuration_id?: string | null;
+  connection_method?: "default" | "custom";
+  home_account_id?: string | null;
+  display_name?: string | null;
+  last_verified_at?: string | null;
+  account_type?: "personal" | "organization" | "unknown";
+  resolved_authority?: string | null;
   id: string;
   user_id: string;
   tenant_id: string;
@@ -160,6 +167,8 @@ export interface SendRun {
   failed_count: number;
   skipped_count: number;
   is_test: boolean;
+  live_enabled?: boolean | null;
+  microsoft_email?: string | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;

@@ -32,9 +32,10 @@ export function suggestTemplate(value: unknown, templates: Pick<EmailTemplate, "
   const normalized = normalizeRoutingValue(value);
   if (!normalized) return null;
   const candidates = templates.filter((template) => template.is_active && !template.is_archived);
-  return candidates.find((template) => normalizeRoutingValue(template.category) === normalized)
-    ?? candidates.find((template) => normalizeRoutingValue(template.name) === normalized)
-    ?? null;
+  const categories = candidates.filter((template) => normalizeRoutingValue(template.category) === normalized);
+  if (categories.length) return categories.length === 1 ? categories[0] : null;
+  const names = candidates.filter((template) => normalizeRoutingValue(template.name) === normalized);
+  return names.length === 1 ? names[0] : null;
 }
 
 export function resolveTemplateForRow(args: {

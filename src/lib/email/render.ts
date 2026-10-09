@@ -1,5 +1,5 @@
 import type { Dataset, DatasetColumn, DatasetPlaceholderMapping, DatasetRow, EmailTemplate, RoutingRule, SignatureField } from "@/types";
-import { renderSignature } from "./signature";
+import { renderPlainTextSignature, renderSignature } from "./signature";
 import { resolveSubject } from "./subject";
 import { buildTemplateContext, extractPlaceholders, htmlToPlainText, resolvePlaceholders, sanitizeEmailHtml } from "@/lib/templates/placeholders";
 import { resolveTemplateForRow } from "@/lib/templates/routing";
@@ -11,6 +11,7 @@ export interface PreparedEmail {
   plainTextBody: string;
   missing: string[];
   routeSource: "override" | "routing" | "fallback" | "skip" | "unmapped";
+  requiredFields: string[];
 }
 
 export function normalizeSignatureTokenBlocks(html: string) {
@@ -45,25 +46,33 @@ export function rowTemplateData(
 
 export function prepareRowEmail(args: {
   row: DatasetRow;
-  dataset: Pick<Dataset, "fallback_template_id" | "subject_strategy">;
+  dataset: Pick<Dataset, "fallback_template_id" | "subject_strategy"> & Partial<Pick<Dataset, "routing_column_id">>;
   columns: Pick<DatasetColumn, "id" | "placeholder_slug" | "standard_field">[];
   placeholderMappings?: Pick<DatasetPlaceholderMapping, "placeholder" | "column_id">[];
   templates: EmailTemplate[];
   rules: RoutingRule[];
   signatureFields?: SignatureField[];
 }): PreparedEmail {
-  const route = resolveTemplateForRow({ overrideTemplateId: args.row.template_override_id, routingValue: args.row.routing_value, rules: args.rules, fallbackTemplateId: args.dataset.fallback_template_id });
-  const template = args.templates.find((item) => item.id === route.templateId) ?? null;
-  if (!template) return { template: null, subject: "", htmlBody: "", plainTextBody: "", missing: [], routeSource: route.source };
-  const signature = renderSignature(args.signatureFields ?? []);
+  const route = resolveTemplateForRow({ overrideTemplateId: args.row.template_override_id, routingValue: args.row.routing_value, rules: args.dataset.routing_column_id === null ? [] : args.rules, fallbackTemplateId: args.dataset.fallback_template_id });
+  const template = args.templates.find((item) => item.id === route.templateId && item.is_active && !item.is_archived) ?? null;
+  if (!template) return { template: null, subject: "", htmlBody: "", plainTextBody: "", missing: [], requiredFields: [], routeSource: route.source };
+  const signature = template.signature_behavior === "none" ? "" : renderSignature(args.signatureFields ?? []);
   const hasSignatureToken = extractPlaceholders(template.html_body).includes("signature");
   const context = buildTemplateContext({ rowData: rowTemplateData(args.row, args.columns, args.placeholderMappings), signatureHtml: signature });
   const resolvedSubject = resolvePlaceholders(template.subject_template, context);
-  const resolvedBody = resolvePlaceholders(normalizeSignatureTokenBlocks(template.html_body), context);
+  const resolvedBody = resolvePlaceholders(normalizeSignatureTokenBlocks(template.html_body), context, true);
   let htmlBody = resolvedBody.output;
   if (template.signature_behavior === "append" && !hasSignatureToken) htmlBody += signature;
   if (template.signature_behavior === "none" && signature) htmlBody = htmlBody.replace(signature, "");
   const subject = resolveSubject(args.dataset.subject_strategy, args.row.subject_value, resolvedSubject.output);
-  const missing = Array.from(new Set([...resolvedSubject.missing, ...resolvedBody.missing]));
-  return { template, subject, htmlBody: sanitizeEmailHtml(htmlBody), plainTextBody: template.plain_text_body ? resolvePlaceholders(template.plain_text_body, context).output : htmlToPlainText(htmlBody), missing, routeSource: route.source };
+  const plainContext = { ...context, signature: template.signature_behavior === "none" ? "" : renderPlainTextSignature(args.signatureFields) };
+  const resolvedPlain = template.plain_text_body ? resolvePlaceholders(template.plain_text_body, plainContext) : null;
+  let plainTextBody = resolvedPlain?.output ?? htmlToPlainText(htmlBody);
+  if (resolvedPlain && template.signature_behavior === "append" && !extractPlaceholders(template.plain_text_body ?? "").includes("signature")) plainTextBody += "\n\n" + plainContext.signature;
+  const usesTemplateSubject = args.dataset.subject_strategy === "template" || (args.dataset.subject_strategy === "spreadsheet_fallback" && !args.row.subject_value?.trim());
+  const missing = Array.from(new Set([...(usesTemplateSubject ? resolvedSubject.missing : []), ...resolvedBody.missing, ...(resolvedPlain?.missing ?? [])]));
+  if (!subject.trim()) missing.push("email_subject");
+  if (!htmlToPlainText(htmlBody).trim() && !/<img\b/i.test(htmlBody)) missing.push("email_body");
+  const requiredFields = Array.from(new Set([...(usesTemplateSubject ? extractPlaceholders(template.subject_template) : []), ...extractPlaceholders(template.html_body), ...extractPlaceholders(template.plain_text_body ?? "")])).filter((field) => field !== "signature");
+  return { template, subject, htmlBody: sanitizeEmailHtml(htmlBody), plainTextBody, missing, requiredFields, routeSource: route.source };
 }

@@ -1,31 +1,94 @@
 "use client";
-/* eslint-disable @typescript-eslint/no-unused-expressions, react-hooks/incompatible-library */
-
-import { useEffect, useMemo, useState } from "react";
-import { flexRender, getCoreRowModel, getSortedRowModel, useReactTable, type ColumnDef, type SortingState } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, Columns3, FilterX, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { TableDensityControl, type TableDensity } from "@/components/ui/table-density";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { DatasetColumn, DatasetRow } from "@/types";
+import { formatDate } from "@/lib/utils";
+import type { DatasetColumn, DatasetRow, EmailTemplate, RoutingRule } from "@/types";
 
-const PAGE_SIZE = 100;
-export function DatasetRowsTable({ datasetId, columns, initialRows, initialCount, selection, onSelectionChange, onPreview, onEdit, onSuppress }: { datasetId: string; columns: DatasetColumn[]; initialRows: DatasetRow[]; initialCount: number; selection: Set<string>; onSelectionChange: (selection: Set<string>) => void; onPreview: (row: DatasetRow) => void; onEdit: (row: DatasetRow) => void; onSuppress: (row: DatasetRow) => void }) {
-  const [rows, setRows] = useState(initialRows); const [count, setCount] = useState(initialCount); const [page, setPage] = useState(0); const [search, setSearch] = useState(""); const [emailFilter, setEmailFilter] = useState("all"); const [sorting, setSorting] = useState<SortingState>([]); const [visible, setVisible] = useState<Record<string, boolean>>({}); const [loading, setLoading] = useState(false);
-  async function load(nextPage = page, nextSearch = search, nextFilter = emailFilter) { setLoading(true); try { const { data, error } = await getSupabaseBrowserClient().rpc("search_dataset_rows", { p_dataset_id: datasetId, p_search: nextSearch.trim() || null, p_email_filter: nextFilter, p_limit: PAGE_SIZE, p_offset: nextPage * PAGE_SIZE }); if (error) throw error; const result = (data ?? []) as (DatasetRow & { total_count: number })[]; setRows(result); setCount(Number(result[0]?.total_count ?? 0)); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not load rows."); } finally { setLoading(false); } }
-  useEffect(() => { const timer = setTimeout(() => { setPage(0); void load(0, search, emailFilter); }, 250); return () => clearTimeout(timer); }, [search, emailFilter]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tableColumns = useMemo<ColumnDef<DatasetRow>[]>(() => [
-    { id: "select", header: () => <input aria-label="Select visible rows" type="checkbox" checked={rows.length > 0 && rows.every((row) => selection.has(row.id))} onChange={(event) => { const next = new Set(selection); rows.forEach((row) => event.target.checked ? next.add(row.id) : next.delete(row.id)); onSelectionChange(next); }} />, cell: ({ row }) => <input aria-label={`Select row ${row.original.row_number}`} type="checkbox" checked={selection.has(row.original.id)} onChange={(event) => { const next = new Set(selection); event.target.checked ? next.add(row.original.id) : next.delete(row.original.id); onSelectionChange(next); }} /> },
-    { accessorKey: "row_number", header: "#", cell: ({ getValue }) => <span className="text-xs text-[#7a8581]">{String(getValue())}</span> },
-    { accessorKey: "recipient_email", header: "Recipient email", cell: ({ row }) => <div><div className="font-medium">{row.original.recipient_email || "—"}</div><div className="mt-1"><Badge tone={row.original.email_valid ? "success" : row.original.recipient_email ? "danger" : "warning"}>{row.original.email_valid ? "Valid" : row.original.recipient_email ? "Invalid" : "Missing"}</Badge></div></div> },
-    { accessorKey: "routing_value", header: "Routing value", cell: ({ getValue }) => String(getValue() || "—") },
-    ...columns.filter((column) => !["recipient_email"].includes(column.standard_field ?? "")).map<ColumnDef<DatasetRow>>((column) => ({ id: column.placeholder_slug, header: column.original_label, accessorFn: (row) => row.data[column.placeholder_slug], cell: ({ getValue }) => <span className="block max-w-64 truncate">{String(getValue() ?? "") || "—"}</span> })),
-    { id: "actions", header: "", cell: ({ row }) => <div className="flex justify-end gap-1"><Button size="sm" variant="ghost" onClick={() => onPreview(row.original)}>Preview</Button><Button size="sm" variant="ghost" onClick={() => onEdit(row.original)}>Edit</Button><Button size="sm" variant="ghost" onClick={() => onSuppress(row.original)}>Suppress</Button></div> },
-  ], [columns, onEdit, onPreview, onSelectionChange, onSuppress, rows, selection]);
-  const table = useReactTable({ data: rows, columns: tableColumns, state: { sorting, columnVisibility: visible }, onSortingChange: setSorting, onColumnVisibilityChange: setVisible, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() });
-  async function selectAllFiltered() { setLoading(true); try { const { data, error } = await getSupabaseBrowserClient().rpc("search_dataset_rows", { p_dataset_id: datasetId, p_search: search.trim() || null, p_email_filter: emailFilter, p_limit: 10000, p_offset: 0 }); if (error) throw error; onSelectionChange(new Set((data ?? []).map((row: { id: string }) => row.id))); } catch (error) { toast.error(error instanceof Error ? error.message : "Could not select filtered rows."); } finally { setLoading(false); } }
-  return <div><div className="mb-4 flex flex-wrap items-center gap-2"><div className="relative min-w-64 flex-1"><Search size={15} className="absolute left-3 top-3 text-[#8b9692]" /><Input className="pl-9" placeholder="Search all imported fields…" value={search} onChange={(e) => setSearch(e.target.value)} /></div><Select className="w-44" value={emailFilter} onChange={(e) => setEmailFilter(e.target.value)}><option value="all">All email states</option><option value="valid">Valid email</option><option value="missing">Missing email</option><option value="invalid">Invalid email</option></Select><Button variant="outline" onClick={() => { setSearch(""); setEmailFilter("all"); }}><FilterX size={14} />Clear</Button><details className="relative"><summary className="list-none"><Button as-resource="true" variant="outline"><Columns3 size={14} />Columns</Button></summary><div className="absolute right-0 z-20 mt-2 max-h-72 w-60 overflow-auto rounded-lg border bg-white p-3 shadow-xl">{table.getAllLeafColumns().filter((column) => !["select", "actions"].includes(column.id)).map((column) => <label className="flex items-center gap-2 py-1 text-xs" key={column.id}><input type="checkbox" checked={column.getIsVisible()} onChange={column.getToggleVisibilityHandler()} />{typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}</label>)}</div></details></div><div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-[#f2f6f4] px-3 py-2"><span className="text-sm font-semibold">Selected: {selection.size.toLocaleString()}</span><div className="flex gap-2"><Button size="sm" variant="ghost" onClick={selectAllFiltered}>Select all {count.toLocaleString()} filtered</Button><Button size="sm" variant="ghost" onClick={() => onSelectionChange(new Set())}>Deselect all</Button><Button size="sm" variant="ghost" onClick={() => { const next = new Set(selection); rows.forEach((row) => next.has(row.id) ? next.delete(row.id) : next.add(row.id)); onSelectionChange(next); }}>Invert visible</Button></div></div><div className={`overflow-auto rounded-lg border ${loading ? "opacity-60" : ""}`}><table className="w-full min-w-max text-left text-sm"><thead className="sticky top-0 z-10 bg-[#f7f9f8] text-xs uppercase tracking-wide text-[#71807a]">{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th className="border-b px-3 py-3" key={header.id} onClick={header.column.getToggleSortingHandler()}>{flexRender(header.column.columnDef.header, header.getContext())}{header.column.getIsSorted() === "asc" ? " ↑" : header.column.getIsSorted() === "desc" ? " ↓" : ""}</th>)}</tr>)}</thead><tbody className="divide-y">{table.getRowModel().rows.map((row) => <tr className={selection.has(row.original.id) ? "bg-[#f1f8f5]" : "hover:bg-[#fafcfb]"} key={row.id}>{row.getVisibleCells().map((cell) => <td className="px-3 py-3" key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}</tr>)}</tbody></table>{!rows.length && <div className="px-6 py-14 text-center text-sm text-[#7a8581]">No rows match these filters.</div>}</div><div className="mt-4 flex items-center justify-between"><span className="text-xs text-[#7a8581]">{count ? `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, count)} of ${count.toLocaleString()}` : "0 rows"}</span><div className="flex gap-1"><Button variant="outline" size="icon" disabled={page === 0 || loading} onClick={() => { const next = page - 1; setPage(next); void load(next); }}><ChevronLeft size={15} /></Button><Button variant="outline" size="icon" disabled={(page + 1) * PAGE_SIZE >= count || loading} onClick={() => { const next = page + 1; setPage(next); void load(next); }}><ChevronRight size={15} /></Button></div></div></div>;
+type ReviewRow = DatasetRow & { total_count?: number; outreach_status?: string; last_sent_at?: string; suppressed?: boolean; chosen_template_name?: string };
+const labels: Record<string, string> = { sent: "Accepted by Microsoft", simulated: "Practice complete", failed: "Failed", not_sent: "Not sent" };
+const PAGE_SIZE = 50;
+
+export function DatasetRowsTable({ datasetId, columns, initialRows, initialCount, selection, onSelectionChange, onPreview, onEdit, onSuppress, rules }: {
+  datasetId: string; columns: DatasetColumn[]; initialRows: DatasetRow[]; initialCount: number;
+  selection: Set<string>; onSelectionChange: (value: Set<string>) => void;
+  onPreview: (row: DatasetRow) => void; onEdit: (row: DatasetRow) => void; onSuppress: (row: DatasetRow) => void;
+  templates: EmailTemplate[]; rules: RoutingRule[]; fallbackTemplateId?: string | null;
+}) {
+  const [rows, setRows] = useState<ReviewRow[]>(initialRows.slice(0, PAGE_SIZE));
+  const [count, setCount] = useState(initialCount);
+  const [search, setSearch] = useState("");
+  const [emailFilter, setEmailFilter] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [group, setGroup] = useState("");
+  const [sort, setSort] = useState("row_number");
+  const [desc, setDesc] = useState(false);
+  const [page, setPage] = useState(0);
+  const [density, setDensity] = useState<TableDensity>("comfortable");
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(false);
+  const [issue, setIssue] = useState("");
+  const generation = useRef(0);
+  const selectGeneration = useRef(0);
+  const params = { p_dataset_id: datasetId, p_search: search.trim(), p_email_filter: emailFilter, p_status: status, p_group: group, p_sort: sort, p_desc: desc };
+  useEffect(() => {
+    const id = ++generation.current;
+    const timer = setTimeout(async () => {
+      setLoading(true); setIssue("");
+      const { data, error } = await getSupabaseBrowserClient().rpc("review_spreadsheet_rows", { p_dataset_id: datasetId, p_search: search.trim(), p_email_filter: emailFilter, p_status: status, p_group: group, p_sort: sort, p_desc: desc, p_limit: PAGE_SIZE, p_offset: page * PAGE_SIZE });
+      if (id !== generation.current) return;
+      if (error) setIssue("We couldn't load recipients. Please try again. If this follows an upgrade, check that the spreadsheet migration has been applied.");
+      else { const result = (data ?? []) as ReviewRow[]; setRows(result); setCount(Number(result[0]?.total_count ?? 0)); }
+      setLoading(false);
+    }, 250);
+    return () => { clearTimeout(timer); if (generation.current === id) generation.current = id + 1; };
+  }, [datasetId, search, emailFilter, status, group, sort, desc, page]);
+
+  function selectPage(checked: boolean) { const next = new Set(selection); rows.forEach((row) => checked ? next.add(row.id) : next.delete(row.id)); onSelectionChange(next); }
+  async function selectAll() {
+    const id = ++selectGeneration.current;
+    setLoading(true);
+    try {
+      const selected = new Set<string>();
+      for (let offset = 0; offset < count; offset += 500) {
+        const { data, error } = await getSupabaseBrowserClient().rpc("review_spreadsheet_rows", { ...params, p_limit: 500, p_offset: offset });
+        if (error) throw error;
+        if (id !== selectGeneration.current) return;
+        (data ?? []).forEach((row: ReviewRow) => selected.add(row.id));
+        if ((data ?? []).length < 500) break;
+      }
+      if (id === selectGeneration.current) onSelectionChange(selected);
+    } catch { toast.error("We couldn't select the matching recipients. Please try again."); }
+    finally { if (id === selectGeneration.current) setLoading(false); }
+  }
+  function changeFilter(set: (value: string) => void, value: string) { selectGeneration.current++; set(value); setPage(0); }
+  function order(key: string) { setDesc(sort === key ? !desc : false); setSort(key); setPage(0); }
+  const headers = [
+    ["row_number", "Row"], ["recipient_email", "Recipient email"], ["routing_value", "Spreadsheet group"],
+    ["chosen_template_name", "Email template"], ["outreach_status", "Send status"], ["last_sent_at", "Last result"],
+    ...columns.filter((column) => column.standard_field !== "recipient_email" && !hidden.has(column.id)).map((column) => ["data:" + column.placeholder_slug, column.original_label]),
+  ];
+  const columnWidths = headers.map(([key]) => key === "row_number" ? 96 : key === "recipient_email" ? 320 : key === "chosen_template_name" ? 260 : 224);
+  const tableWidth = 64 + 280 + columnWidths.reduce((total, width) => total + width, 0);
+  return <div>
+    <div className="mb-4 grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+      <Input aria-label="Search recipients" placeholder="Search company, email, or any spreadsheet value" value={search} onChange={(event) => changeFilter(setSearch, event.target.value)} />
+      <Select aria-label="Email quality" value={emailFilter} onChange={(event) => changeFilter(setEmailFilter, event.target.value)}><option value="all">All email addresses</option><option value="valid">Valid addresses</option><option value="missing">Missing addresses</option><option value="invalid">Invalid addresses</option></Select>
+      <Select aria-label="Send status" value={status} onChange={(event) => changeFilter(setStatus, event.target.value)}><option value="all">All send statuses</option><option value="not_sent">No previous result</option><option value="sent">Accepted by Microsoft</option><option value="simulated">Practice complete</option><option value="failed">Failed</option><option value="suppressed">Suppressed</option><option value="missing_template">No email template</option></Select>
+      <Select aria-label="Spreadsheet group" value={group} onChange={(event) => changeFilter(setGroup, event.target.value)}><option value="">All spreadsheet groups</option>{rules.map((rule) => <option key={rule.id} value={rule.routing_value}>{rule.routing_value}</option>)}</Select>
+    </div>
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-xs text-[var(--muted-foreground)]">Selections stay selected when you change filters.</p><details><summary className="cursor-pointer text-xs font-semibold">Choose visible columns</summary><div className="mt-2 grid gap-2 rounded-lg border bg-[var(--card)] p-3 sm:grid-cols-3">{columns.map((column) => <label key={column.id} className="text-xs"><input type="checkbox" checked={!hidden.has(column.id)} onChange={(event) => setHidden((current) => { const next = new Set(current); if (event.target.checked) next.delete(column.id); else next.add(column.id); return next; })} /> {column.original_label}</label>)}</div></details></div>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[var(--muted)] p-3"><span className="text-sm font-semibold">{selection.size.toLocaleString()} selected</span><div className="flex flex-wrap gap-1"><Button size="sm" variant="ghost" disabled={loading} onClick={() => selectPage(true)}>Select this page</Button><Button size="sm" variant="ghost" disabled={loading || !count} onClick={selectAll}>Select all {count.toLocaleString()} matching</Button><Button size="sm" variant="ghost" onClick={() => { selectGeneration.current++; onSelectionChange(new Set()); }}>Deselect all</Button><Button size="sm" variant="ghost" disabled={loading} onClick={() => { const next = new Set(selection); rows.forEach((row) => next.has(row.id) ? next.delete(row.id) : next.add(row.id)); onSelectionChange(next); }}>Invert this page</Button></div></div>
+    {issue && <p className="mb-3 rounded-lg bg-[var(--muted)] p-4 text-sm text-[var(--danger)]" role="alert">{issue}<Button variant="ghost" size="sm" onClick={() => setSearch((value) => value + " ")}>Retry</Button></p>}
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--muted-foreground)]">Scroll inside the table for more columns. Click a heading to sort.</p><TableDensityControl value={density} onChange={setDensity} /></div>
+    <div className="table-frame max-h-[65dvh]" role="region" tabIndex={0} aria-label="Recipient table, scroll to see more columns" aria-busy={loading}><table className="data-table recipient-table w-full" data-density={density} style={{ minWidth: tableWidth }}><caption className="sr-only">Spreadsheet recipients, email quality, selected template, and send results</caption><colgroup><col style={{ width: 64 }} />{headers.map(([key], index) => <col key={key} style={{ width: columnWidths[index] }} />)}<col style={{ width: 280 }} /></colgroup><thead className="sticky top-0 z-10"><tr><th scope="col"><input aria-label="Select this page" type="checkbox" checked={rows.length > 0 && rows.every((row) => selection.has(row.id))} onChange={(event) => selectPage(event.target.checked)} /></th>{headers.map(([key, label]) => <th scope="col" key={key} aria-sort={sort === key ? desc ? "descending" : "ascending" : "none"}><button className="focus-ring text-left font-semibold" onClick={() => order(key)}>{label}{sort === key ? desc ? " ↓" : " ↑" : ""}</button></th>)}<th scope="col">Actions</th></tr></thead><tbody className={loading ? "opacity-60" : ""}>{rows.map((row) => <tr key={row.id} data-selected={selection.has(row.id)}><td><input aria-label={`Select row ${row.row_number}`} type="checkbox" checked={selection.has(row.id)} onChange={(event) => { const next = new Set(selection); if (event.target.checked) next.add(row.id); else next.delete(row.id); onSelectionChange(next); }} /></td>
+      {headers.map(([key]) => <td className="break-words whitespace-normal" key={key}>{key === "recipient_email" ? <div><div className="font-medium">{row.recipient_email || "No email address"}</div><Badge className="mt-2" tone={row.email_valid ? "success" : "warning"}>{row.email_valid ? "Valid" : row.recipient_email ? "Invalid address" : "Missing address"}</Badge></div> : key === "outreach_status" ? <Badge tone={row.suppressed || row.outreach_status === "failed" ? "warning" : "neutral"}>{row.suppressed ? "Suppressed" : labels[row.outreach_status ?? "not_sent"] ?? row.outreach_status}</Badge> : key === "last_sent_at" ? row.last_sent_at ? formatDate(row.last_sent_at) : "—" : key === "chosen_template_name" ? row.chosen_template_name || "No email chosen" : key === "row_number" ? row.row_number : key === "routing_value" ? row.routing_value || "Everyone" : String(row.data[key.startsWith("data:") ? key.slice(5) : key] ?? "") || "Empty"}</td>)}
+      <td className="p-3"><div className="flex flex-wrap gap-1"><Button variant="ghost" size="sm" onClick={() => onPreview(row)}>Preview</Button><Button variant="ghost" size="sm" onClick={() => onEdit(row)}>Edit</Button><Button variant="ghost" size="sm" onClick={() => onSuppress(row)}>Suppress</Button></div></td></tr>)}</tbody></table>{!rows.length && !loading && <div className="p-10 text-left text-sm text-[var(--muted-foreground)]">No recipients match your filters. Try a different search or clear the filters.</div>}</div>
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-[var(--muted-foreground)]" role="status">{loading ? "Loading recipients…" : count ? `${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, count)} of ${count.toLocaleString()}` : "0 recipients"}</span><div className="flex gap-2"><Button variant="outline" size="sm" disabled={page === 0 || loading} onClick={() => setPage((value) => value - 1)}>Previous</Button><Button variant="outline" size="sm" disabled={(page + 1) * PAGE_SIZE >= count || loading} onClick={() => setPage((value) => value + 1)}>Next</Button></div></div>
+  </div>;
 }

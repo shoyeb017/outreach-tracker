@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, AtSign, CheckCircle2, LoaderCircle, Save, Split } from "lucide-react";
+import { ArrowRight, LoaderCircle, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { Dataset, DatasetColumn } from "@/types";
+import type { Dataset, DatasetColumn, DatasetRow, EmailTemplate } from "@/types";
 
 function messageFrom(error: unknown) {
   if (error instanceof Error) return error.message;
@@ -17,35 +17,29 @@ function messageFrom(error: unknown) {
   return "Could not save the required spreadsheet setup.";
 }
 
-export function DatasetSetupPanel({ dataset, columns, onContinue }: { dataset: Dataset; columns: DatasetColumn[]; onContinue?: () => void }) {
+export function DatasetSetupPanel({ dataset, columns, templates, sampleRows = [], onContinue, onDirtyChange }: { dataset: Dataset; columns: DatasetColumn[]; templates: EmailTemplate[]; sampleRows?: DatasetRow[]; onContinue?: () => void; onDirtyChange?: (dirty: boolean) => void }) {
   const router = useRouter();
   const [emailColumnId, setEmailColumnId] = useState(columns.find((column) => column.standard_field === "recipient_email")?.id ?? "");
   const [routingColumnId, setRoutingColumnId] = useState(dataset.routing_column_id ?? "");
   const [subjectColumnId, setSubjectColumnId] = useState(columns.find((column) => column.standard_field === "subject")?.id ?? "");
+  const [mode, setMode] = useState(dataset.routing_column_id ? "column" : "single");
+  const [templateId, setTemplateId] = useState(dataset.fallback_template_id ?? "");
   const [pending, setPending] = useState(false);
-  const [saved, setSaved] = useState(Boolean(columns.some((column) => column.standard_field === "recipient_email") && dataset.routing_column_id));
+  const [saved, setSaved] = useState(Boolean(columns.some((column) => column.standard_field === "recipient_email") && (dataset.routing_column_id || dataset.fallback_template_id)));
 
   async function save() {
     if (!emailColumnId) return toast.error("Choose the spreadsheet column containing recipient email addresses.");
-    if (!routingColumnId) return toast.error("Choose the spreadsheet column whose values select templates.");
+    if (mode === "column" && !routingColumnId) return toast.error("Choose the spreadsheet column whose values select templates.");
+    if (pending) return;
+    if (mode === "single" && !templateId) return toast.error("Choose the email template everyone will receive.");
     setPending(true);
-    setSaved(false);
+    setSaved(false); onDirtyChange?.(true);
     try {
       const supabase = getSupabaseBrowserClient();
-      const currentSubject = columns.find((column) => column.standard_field === "subject");
-      const emailResult = await supabase.rpc("set_dataset_standard_mapping", { p_dataset_id: dataset.id, p_column_id: emailColumnId, p_standard_field: "recipient_email" });
-      if (emailResult.error) throw emailResult.error;
-      if (subjectColumnId) {
-        const subjectResult = await supabase.rpc("set_dataset_standard_mapping", { p_dataset_id: dataset.id, p_column_id: subjectColumnId, p_standard_field: "subject" });
-        if (subjectResult.error) throw subjectResult.error;
-      } else if (currentSubject) {
-        const subjectResult = await supabase.rpc("set_dataset_standard_mapping", { p_dataset_id: dataset.id, p_column_id: currentSubject.id, p_standard_field: null });
-        if (subjectResult.error) throw subjectResult.error;
-      }
-      const routingResult = await supabase.rpc("set_dataset_routing_column", { p_dataset_id: dataset.id, p_column_id: routingColumnId });
-      if (routingResult.error) throw routingResult.error;
-      setSaved(true);
-      toast.success("Required spreadsheet columns saved and row data refreshed.");
+      const { error } = await supabase.rpc("save_spreadsheet_setup", { p_dataset_id: dataset.id, p_email_column: emailColumnId, p_routing_column: mode === "column" ? routingColumnId : null, p_template: mode === "single" ? templateId : dataset.fallback_template_id, p_subject_column: subjectColumnId || null });
+      if (error) throw error;
+      setSaved(true); onDirtyChange?.(false);
+      toast.success("Email setup saved. Your recipient rows have been updated.");
       router.refresh();
     } catch (error) {
       toast.error(messageFrom(error));
@@ -54,23 +48,11 @@ export function DatasetSetupPanel({ dataset, columns, onContinue }: { dataset: D
     }
   }
 
-  return <div className="space-y-6">
-    <Card className="border-[#cfe2da] bg-[#f5faf8]">
-      <CardHeader><CardTitle>Start here: choose two required spreadsheet columns</CardTitle><p className="mt-1 text-sm leading-6 text-[#5f6f69]">These selections control where each message goes and which template it uses. They do not fill placeholders; placeholder mapping comes after template routing.</p></CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border bg-white p-4"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#e8f3ee] text-[#176b55]"><AtSign size={17} /></span><div className="mt-3 text-sm font-semibold">1. Recipient email column</div><p className="mt-1 text-xs leading-5 text-[#68736f]">The value in this column becomes the email <strong>To</strong> address and is validated before sending.</p></div>
-        <div className="rounded-xl border bg-white p-4"><span className="grid h-9 w-9 place-items-center rounded-lg bg-[#e8f3ee] text-[#176b55]"><Split size={17} /></span><div className="mt-3 text-sm font-semibold">2. Template selection key</div><p className="mt-1 text-xs leading-5 text-[#68736f]">Each unique value is matched exactly against a template <strong>Category</strong> first and then its <strong>Name</strong>. You confirm every match in Template routing.</p></div>
-      </CardContent>
-    </Card>
-
-    <Card>
-      <CardHeader><CardTitle>Required spreadsheet setup</CardTitle></CardHeader>
-      <CardContent className="space-y-5">
-        <div><Label>Spreadsheet column containing recipient email (required)</Label><Select value={emailColumnId} onChange={(event) => { setEmailColumnId(event.target.value); setSaved(false); }} disabled={pending}><option value="">Choose the email column</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.original_label}</option>)}</Select><p className="mt-2 text-xs text-[#68736f]">Example: Email Address, Work Email, Contact Email, or Recipient Email.</p></div>
-        <div><Label>Spreadsheet column/key that selects the template (required)</Label><Select value={routingColumnId} onChange={(event) => { setRoutingColumnId(event.target.value); setSaved(false); }} disabled={pending}><option value="">Choose the template selection key</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.original_label}</option>)}</Select><p className="mt-2 text-xs text-[#68736f]">For your 23 templates, choose the spreadsheet column containing values such as Financial Services &amp; Banking, Insurance, or Healthcare &amp; Life Sciences.</p></div>
-        <div><Label>Spreadsheet email-subject column (optional)</Label><Select value={subjectColumnId} onChange={(event) => { setSubjectColumnId(event.target.value); setSaved(false); }} disabled={pending}><option value="">Use each template subject</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.original_label}</option>)}</Select></div>
-        <div className="flex flex-col justify-between gap-3 border-t pt-5 sm:flex-row sm:items-center"><div className="text-xs" aria-live="polite">{saved ? <span className="inline-flex items-center gap-1.5 text-[#176b55]"><CheckCircle2 size={14} />Required setup saved</span> : <span className="text-[#7a8581]">Save both required columns before routing.</span>}</div><div className="flex gap-2"><Button onClick={save} disabled={pending || !emailColumnId || !routingColumnId}>{pending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}Save required setup</Button>{onContinue && <Button variant="outline" onClick={onContinue} disabled={!saved}>Continue to routing<ArrowRight size={15} /></Button>}</div></div>
-      </CardContent>
-    </Card>
-  </div>;
+  return <Card><CardHeader><CardTitle>Email setup</CardTitle><p className="page-subtitle">Decide where emails go and which message each recipient receives.</p></CardHeader><CardContent className="space-y-5">
+    <div><Label htmlFor="recipient-email-column">Which column contains the recipient email?</Label><Select id="recipient-email-column" disabled={pending} value={emailColumnId} onChange={(event) => { setEmailColumnId(event.target.value); setSaved(false); onDirtyChange?.(true); }}><option value="">Choose email column</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.original_label}</option>)}</Select><p className="mt-2 text-xs text-[var(--muted-foreground)]">Examples: {sampleRows.slice(0, 3).map((row) => String(row.data[columns.find((column) => column.id === emailColumnId)?.placeholder_slug ?? ""] || "Empty")).join(" · ") || "Choose a column to see sample values."}</p></div>
+    <fieldset className="grid gap-3 sm:grid-cols-2"><legend className="mb-2 text-sm font-semibold">Which email should recipients receive?</legend>{[["single", "One template for everyone"], ["column", "Different templates by spreadsheet value"]].map(([value, label]) => <label key={value} className={`rounded-xl border p-4 text-sm ${mode === value ? "border-[var(--border)] bg-[var(--muted)]" : ""}`}><input name="email-choice" type="radio" disabled={pending} checked={mode === value} onChange={() => { setMode(value); setSaved(false); onDirtyChange?.(true); }} /> {label}</label>)}</fieldset>
+    {mode === "single" ? <div><Label htmlFor="everyone-email">Email template for everyone</Label><Select id="everyone-email" disabled={pending} value={templateId} onChange={(event) => { setTemplateId(event.target.value); setSaved(false); onDirtyChange?.(true); }}><option value="">Choose an email template</option>{templates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div> : <div><Label htmlFor="selection-column">Use this column to choose different emails</Label><Select id="selection-column" disabled={pending} value={routingColumnId} onChange={(event) => { setRoutingColumnId(event.target.value); setSaved(false); onDirtyChange?.(true); }}><option value="">Choose a column, such as Industry</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.original_label}</option>)}</Select><p className="mt-2 text-xs text-[var(--muted-foreground)]">Next, confirm which email each value receives. Changing this column clears previous assignments.</p></div>}
+    <details><summary className="cursor-pointer text-sm font-semibold">Use subjects from a spreadsheet column (optional)</summary><Select aria-label="Subject column" className="mt-3" value={subjectColumnId} onChange={(event) => { setSubjectColumnId(event.target.value); setSaved(false); onDirtyChange?.(true); }}><option value="">Use template subjects</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.original_label}</option>)}</Select></details>
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5"><span role="status" className="text-xs text-[var(--muted-foreground)]">{saved ? "Saved. Continue when ready." : "Save your choices before continuing."}</span><div className="flex flex-wrap gap-2"><Button disabled={pending || !emailColumnId || (mode === "single" ? !templateId : !routingColumnId)} onClick={save}>{pending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}Save choices</Button>{onContinue && <Button disabled={!saved || pending} onClick={onContinue}>Continue to templates<ArrowRight size={15} /></Button>}</div></div>
+  </CardContent></Card>;
 }

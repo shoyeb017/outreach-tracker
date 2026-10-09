@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, ImagePlus, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, ImagePlus, LoaderCircle, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { renderSignature } from "@/lib/email/signature";
@@ -13,6 +14,12 @@ import type { SignatureField } from "@/types";
 
 export function SignatureBuilder({ initialFields, microsoftEmail }: { initialFields: SignatureField[]; microsoftEmail?: string | null }) {
   const [fields, setFields] = useState(() => [...initialFields].sort((a, b) => a.display_order - b.display_order));
+  const [selectedId, setSelectedId] = useState(initialFields.slice().sort((a, b) => a.display_order - b.display_order)[0]?.id ?? "");
+  const [dirtyIds, setDirtyIds] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("Your saved signature is ready.");
+  const selected = fields.find((field) => field.id === selectedId);
+  useEffect(() => { if (!dirtyIds.length) return; const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirtyIds.length]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const preview = useMemo(() => renderSignature(fields), [fields]);
 
@@ -33,33 +40,46 @@ export function SignatureBuilder({ initialFields, microsoftEmail }: { initialFie
       style_preference: fieldType === "image" ? { width: 120 } : {},
     }).select("*").single();
     if (error) toast.error(error.message);
-    else setFields((current) => [...current, data]);
+    else { setFields((current) => [...current, data]); setSelectedId(data.id); setSaveStatus("Block added. Enter its content below, then save."); }
   }
 
-  function changeLocal(id: string, patch: Partial<SignatureField>) {
+  function changeLocal(id: string, patch: Partial<SignatureField>, markDirty = true) {
     setFields((current) => current.map((field) => field.id === id ? { ...field, ...patch } : field));
+    if (markDirty) { setDirtyIds((current) => current.includes(id) ? current : [...current, id]); setSaveStatus("Unsaved changes"); }
   }
 
-  async function saveField(id: string, patch: Partial<SignatureField>) {
-    changeLocal(id, patch);
-    const { error } = await getSupabaseBrowserClient().from("signature_fields").update(patch).eq("id", id);
-    if (error) toast.error(error.message);
+  async function saveChanges() {
+    if (busy || !dirtyIds.length) return;
+    if (fields.some((field) => dirtyIds.includes(field.id) && field.field_type === "image" && field.value.trim() && !/^https:\/\//i.test(field.value.trim()))) { setSaveStatus("Use an HTTPS image URL before saving your logo."); toast.error("Logo URLs must start with https://"); return; }
+    setBusy(true); setSaveStatus("Saving…");
+    const failed: string[] = [];
+    try {
+      for (const field of fields.filter((item) => dirtyIds.includes(item.id))) {
+        const { label, value, field_type, enabled, show_label, clickable, url, style_preference } = field;
+        const { error } = await getSupabaseBrowserClient().from("signature_fields").update({ label, value, field_type, enabled, show_label, clickable, url, style_preference }).eq("id", field.id);
+        if (error) failed.push(field.id);
+      }
+      setDirtyIds(failed);
+      setSaveStatus(failed.length ? "Some blocks were not saved. Your edits are still here; try saving again." : "Signature saved");
+      if (failed.length) toast.error("Some signature changes were not saved. Try again."); else toast.success("Signature saved");
+    } catch { setSaveStatus("Could not save. Your edits are still here; try again."); toast.error("Could not save your signature."); }
+    finally { setBusy(false); }
+  }
+
+  async function runAction(action: () => Promise<unknown>) {
+    if (busy || uploadingId) return;
+    setBusy(true);
+    try { await action(); }
+    catch { setSaveStatus("This change could not be saved. Please try again."); toast.error("Could not update your signature. Please try again."); }
+    finally { setBusy(false); }
   }
 
   async function removeField(id: string) {
     if (!window.confirm("Delete this signature line?")) return;
     const supabase = getSupabaseBrowserClient();
-    const field = fields.find((item) => item.id === id);
     const { error } = await supabase.from("signature_fields").delete().eq("id", id);
-    if (error) toast.error(error.message);
-    else {
-      setFields((current) => current.filter((item) => item.id !== id));
-      const storagePath = field?.style_preference?.storagePath;
-      if (typeof storagePath === "string") {
-        const { error: storageError } = await supabase.storage.from("signature-assets").remove([storagePath]);
-        if (storageError) toast.warning("The signature line was deleted, but its old logo file could not be removed.");
-      }
-    }
+    if (error) toast.error("Could not remove this line. Please try again.");
+    else { setFields((current) => current.filter((item) => item.id !== id)); setDirtyIds((current) => current.filter((item) => item !== id)); if (selectedId === id) setSelectedId(fields.find((item) => item.id !== id)?.id ?? ""); setSaveStatus("Line removed. Uploaded assets are retained for saved email snapshots."); }
   }
 
   async function uploadLogo(field: SignatureField, file?: File) {
@@ -79,7 +99,6 @@ export function SignatureBuilder({ initialFields, microsoftEmail }: { initialFie
       if (uploadError) throw uploadError;
 
       const publicUrl = supabase.storage.from("signature-assets").getPublicUrl(path).data.publicUrl;
-      const previousPath = field.style_preference?.storagePath;
       const stylePreference = { ...field.style_preference, width: Number(field.style_preference?.width) || 120, storagePath: path };
       const { error: updateError } = await supabase.from("signature_fields").update({ value: publicUrl, style_preference: stylePreference }).eq("id", field.id);
       if (updateError) {
@@ -87,8 +106,7 @@ export function SignatureBuilder({ initialFields, microsoftEmail }: { initialFie
         throw updateError;
       }
 
-      changeLocal(field.id, { value: publicUrl, style_preference: stylePreference });
-      if (typeof previousPath === "string" && previousPath !== path) await supabase.storage.from("signature-assets").remove([previousPath]);
+      changeLocal(field.id, { value: publicUrl, style_preference: stylePreference }, false);
       toast.success("Logo uploaded");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not upload the logo.");
@@ -106,95 +124,62 @@ export function SignatureBuilder({ initialFields, microsoftEmail }: { initialFie
     setFields(next);
     const results = await Promise.all(next.map((field) => getSupabaseBrowserClient().from("signature_fields").update({ display_order: field.display_order }).eq("id", field.id)));
     const failed = results.find((result) => result.error)?.error;
-    if (failed) toast.error(failed.message);
+    if (failed) { setFields(fields); setSaveStatus("Order not fully saved. Refresh and try again."); toast.error("Could not save the complete order. Please refresh and try again."); } else setSaveStatus("Order saved");
   }
 
   return (
-    <Card id="signature">
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
-        <div>
-          <CardTitle>Dynamic signature</CardTitle>
-          <p className="mt-1 text-sm text-[#68736f]">Every visible line is created here. Add “Best regards,”, your name, title, company, phone, links—or nothing at all—in any order.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={() => addField("image")}><ImagePlus size={14} />Add logo</Button>
-          <Button size="sm" onClick={() => addField("text")}><Plus size={14} />Add line</Button>
-        </div>
-      </CardHeader>
-      <CardContent className="grid gap-7 xl:grid-cols-[1.15fr_.85fr]">
-        <div>
-          <div className="space-y-3">
-            {fields.length ? fields.map((field, index) => (
-              <div key={field.id} className={`rounded-lg border p-3 ${field.enabled ? "bg-[#fafcfb]" : "bg-[#f3f4f4] opacity-75"}`}>
-                <div className="grid gap-2 md:grid-cols-[26px_minmax(110px,.7fr)_minmax(180px,1.3fr)_110px_auto]">
-                  <span className="flex items-center text-[#9aa39f]"><GripVertical size={16} /></span>
-                  <Input aria-label={field.field_type === "image" ? "Logo alternative text" : "Optional line label"} placeholder={field.field_type === "image" ? "Logo description" : "Optional label"} value={field.label} onChange={(event) => changeLocal(field.id, { label: event.target.value })} onBlur={(event) => saveField(field.id, { label: event.target.value })} />
-                  <Input aria-label={field.field_type === "image" ? "Logo HTTPS URL" : "Signature line value"} type={field.field_type === "image" ? "url" : "text"} placeholder={field.field_type === "image" ? "https://example.com/logo.png" : "Example: Best regards,"} value={field.value} onChange={(event) => changeLocal(field.id, { value: event.target.value })} onBlur={(event) => saveField(field.id, { value: event.target.value })} />
-                  <Select aria-label="Signature line type" value={field.field_type} onChange={(event) => {
-                    const fieldType = event.target.value as SignatureField["field_type"];
-                    saveField(field.id, {
-                      field_type: fieldType,
-                      show_label: fieldType === "image" ? false : field.show_label,
-                      clickable: fieldType === "text" ? false : field.clickable,
-                      style_preference: fieldType === "image" ? { ...field.style_preference, width: Number(field.style_preference?.width) || 120 } : field.style_preference,
-                    });
-                  }}>
-                    <option value="text">Text</option>
-                    <option value="email">Email</option>
-                    <option value="phone">Phone</option>
-                    <option value="url">Website</option>
-                    <option value="image">Logo / image</option>
-                  </Select>
-                  <div className="flex">
-                    <Button variant="ghost" size="icon" title={field.enabled ? "Hide line" : "Show line"} aria-label={field.enabled ? "Hide line" : "Show line"} onClick={() => saveField(field.id, { enabled: !field.enabled })}>{field.enabled ? <Eye size={14} /> : <EyeOff size={14} />}</Button>
-                    <Button variant="ghost" size="icon" title="Move up" aria-label="Move line up" disabled={index === 0} onClick={() => move(index, -1)}><ArrowUp size={14} /></Button>
-                    <Button variant="ghost" size="icon" title="Move down" aria-label="Move line down" disabled={index === fields.length - 1} onClick={() => move(index, 1)}><ArrowDown size={14} /></Button>
-                    <Button variant="ghost" size="icon" title="Delete line" aria-label="Delete signature line" onClick={() => removeField(field.id)}><Trash2 size={14} /></Button>
-                  </div>
-                </div>
-                {field.field_type === "image" ? (
-                  <div className="ml-7 mt-3 grid gap-3 rounded-lg border bg-white p-3 sm:grid-cols-[auto_140px_minmax(180px,1fr)] sm:items-end">
-                    <div>
-                      <div className="mb-1 text-xs font-semibold text-[#596561]">Logo file</div>
-                      <label className="focus-ring inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border bg-white px-3 text-xs font-semibold text-[#26322f] shadow-sm transition hover:bg-[#f7f9f8]">
-                        {uploadingId === field.id ? <LoaderCircle className="animate-spin" size={14} /> : <ImagePlus size={14} />}
-                        {uploadingId === field.id ? "Uploading…" : "Upload image"}
-                        <input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={uploadingId === field.id} onChange={(event) => { void uploadLogo(field, event.target.files?.[0]); event.target.value = ""; }} />
-                      </label>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[#596561]" htmlFor={`logo-width-${field.id}`}>Width (pixels)</label>
-                      <Input id={`logo-width-${field.id}`} type="number" min={24} max={600} value={Number(field.style_preference?.width) || 120} onChange={(event) => changeLocal(field.id, { style_preference: { ...field.style_preference, width: Number(event.target.value) } })} onBlur={(event) => saveField(field.id, { style_preference: { ...field.style_preference, width: Math.min(600, Math.max(24, Number(event.target.value) || 120)) } })} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-[#596561]" htmlFor={`logo-link-${field.id}`}>Click-through link (optional)</label>
-                      <Input id={`logo-link-${field.id}`} type="url" placeholder="https://your-company.com" value={field.url ?? ""} onChange={(event) => changeLocal(field.id, { url: event.target.value })} onBlur={(event) => saveField(field.id, { url: event.target.value || null, clickable: Boolean(event.target.value) })} />
-                    </div>
-                    <p className="text-[11px] leading-5 text-[#7a8581] sm:col-span-3">Upload a PNG, JPG, WebP, or GIF up to 2 MB, or paste an HTTPS image URL above. Width is limited to 24–600 px and height scales automatically. Uploaded logos are publicly readable so email clients can display them.</p>
-                  </div>
-                ) : (
-                  <div className="ml-7 mt-3 flex flex-wrap gap-5 text-xs text-[#596561]">
-                    <label><input className="mr-1" type="checkbox" checked={field.show_label} onChange={(event) => saveField(field.id, { show_label: event.target.checked })} />Show label</label>
-                    <label><input className="mr-1" type="checkbox" checked={field.style_preference?.bold === true} onChange={(event) => saveField(field.id, { style_preference: { ...field.style_preference, bold: event.target.checked } })} />Bold</label>
-                    <label className={field.field_type === "text" ? "text-[#9aa39f]" : ""}><input className="mr-1" type="checkbox" checked={field.clickable} disabled={field.field_type === "text"} onChange={(event) => saveField(field.id, { clickable: event.target.checked })} />Clickable</label>
-                  </div>
-                )}
-              </div>
-            )) : (
-              <div className="rounded-lg border border-dashed p-8 text-center">
-                <p className="text-sm font-semibold">Your signature is empty</p>
-                <p className="mt-1 text-xs leading-5 text-[#7a8581]">That is valid. Add only the lines you want recipients to see.</p>
-                <div className="mt-4 flex justify-center gap-2"><Button variant="outline" onClick={() => addField("image")}><ImagePlus size={14} />Add logo</Button><Button onClick={() => addField("text")}><Plus size={14} />Add text line</Button></div>
-              </div>
-            )}
+    <div id="signature" className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div><h2 className="text-xl font-semibold">Create your signature</h2><p className="mt-2 text-sm text-[var(--muted-foreground)]">Add a block, edit its content, and arrange it in any order.</p></div>
+        <Button onClick={saveChanges} disabled={busy || !!uploadingId || !dirtyIds.length}>{busy ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />}Save signature</Button>
+      </div>
+      <p role="status" className="text-sm text-[var(--muted-foreground)]">{saveStatus}{dirtyIds.length > 0 && !busy ? " · Preview includes your unsaved edits." : ""}</p>
+      <fieldset disabled={busy || !!uploadingId} className="min-w-0">
+        <div className="grid items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_300px]">
+          <div className="min-w-0">
+            <Card><CardHeader><CardTitle>Signature blocks</CardTitle></CardHeader><CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3"><Button variant="outline" onClick={() => runAction(() => addField("text"))}><Plus size={15} />Add text</Button><Button variant="outline" onClick={() => runAction(() => addField("image"))}><ImagePlus size={15} />Add logo</Button></div>
+              {fields.length ? <ol aria-label="Signature block list" tabIndex={0} className="focus-ring max-h-40 space-y-2 overflow-y-auto overscroll-contain pr-1 lg:max-h-[min(440px,50dvh)]">{fields.map((field, index) => <li key={field.id} className={`flex flex-wrap items-center gap-1 rounded-xl border p-2 ${selectedId === field.id ? "border-[var(--border)] bg-[var(--muted)]" : "bg-[var(--card)]"}`}>
+                <button type="button" aria-pressed={selectedId === field.id} aria-label={`Edit block ${index + 1}`} onClick={() => setSelectedId(field.id)} className="focus-ring flex w-full min-w-0 items-center gap-2 rounded-lg p-1 text-left">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--muted)] text-xs font-semibold">{index + 1}</span>
+                  <span className="min-w-0"><span className="block truncate text-sm font-semibold">{field.field_type === "image" ? field.label || "Logo" : field.value || "Empty text block"}</span><span className="mt-1 block text-xs text-[var(--muted-foreground)]">{field.field_type === "image" ? "Image" : "Text"}{!field.enabled ? " · Hidden" : ""}{dirtyIds.includes(field.id) ? " · Not saved" : ""}</span></span>
+                </button>
+                <Button variant="ghost" size="icon" aria-label={`Move block ${index + 1} up`} title="Move up" disabled={index === 0} onClick={() => runAction(() => move(index, -1))}><ArrowUp size={15} /></Button>
+                <Button variant="ghost" size="icon" aria-label={`Move block ${index + 1} down`} title="Move down" disabled={index === fields.length - 1} onClick={() => runAction(() => move(index, 1))}><ArrowDown size={15} /></Button>
+              </li>)}</ol> : <div className="rounded-xl border border-dashed px-6 py-10 text-left"><p className="font-semibold">Start with a text line or logo</p><p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">Your name, a greeting, contact details—only add what you want to show. A signature is optional.</p></div>}
+              <p className="text-xs text-[var(--muted-foreground)]">Select a block to edit it. Use the arrows to change its position.</p>
+            </CardContent></Card>
           </div>
+            {selected ? <Card key={selected.id} className="min-w-0"><CardHeader><CardTitle>Edit {selected.field_type === "image" ? "logo" : "text block"}</CardTitle></CardHeader><CardContent className="space-y-6">
+              {selected.field_type === "image" ? <>
+                <div><Label htmlFor="signature-upload">Upload a logo</Label><Input id="signature-upload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { void uploadLogo(selected, event.target.files?.[0]); event.target.value = ""; }} /><p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">PNG, JPG, WebP or GIF, up to 2 MB. Uploaded images are public so email clients can display them.</p></div>
+                <div><Label htmlFor="signature-width">Logo width (pixels)</Label><Input id="signature-width" type="number" min={24} max={600} value={String(selected.style_preference?.width ?? 120)} onChange={(event) => changeLocal(selected.id, { style_preference: { ...selected.style_preference, width: event.target.value } })} onBlur={(event) => changeLocal(selected.id, { style_preference: { ...selected.style_preference, width: Math.min(600, Math.max(24, Number(event.target.value) || 120)) } })} /><p className="mt-2 text-xs text-[var(--muted-foreground)]">24–600 pixels. Height adjusts automatically.</p></div>
+                <details className="rounded-xl border p-4"><summary className="cursor-pointer text-sm font-semibold">Image details and link</summary><div className="mt-5 space-y-5">
+                  <div><Label htmlFor="signature-image-url">Image URL · alternative to upload</Label><Input id="signature-image-url" type="url" placeholder="https://example.com/logo.png" value={selected.value} onChange={(event) => changeLocal(selected.id, { value: event.target.value })} /></div>
+                  <div><Label htmlFor="signature-alt">Image description</Label><Input id="signature-alt" value={selected.label} onChange={(event) => changeLocal(selected.id, { label: event.target.value })} /></div>
+                  <div><Label htmlFor="signature-link">Website opened when clicked · optional</Label><Input id="signature-link" type="url" value={selected.url ?? ""} placeholder="https://your-company.com" onChange={(event) => changeLocal(selected.id, { url: event.target.value || null, clickable: !!event.target.value })} /></div>
+                </div></details>
+              </> : <>
+                <div><Label htmlFor="signature-value">Text to display</Label><Input id="signature-value" placeholder="e.g. Best regards, or your name" value={selected.value} onChange={(event) => changeLocal(selected.id, { value: event.target.value })} /></div>
+                <details className="rounded-xl border p-4"><summary className="cursor-pointer text-sm font-semibold">Formatting and links</summary><div className="mt-5 space-y-6">
+                  <div className="space-y-3 rounded-lg bg-[var(--surface-hover)] p-4"><h3 className="text-xs font-semibold normal-case text-[var(--muted-foreground)]">Link behavior</h3><div><Label htmlFor="signature-type">Content type</Label><Select id="signature-type" value={selected.field_type} onChange={(event) => changeLocal(selected.id, { field_type: event.target.value as SignatureField["field_type"], clickable: event.target.value !== "text" && selected.clickable })}><option value="text">Plain text</option><option value="email">Email address</option><option value="phone">Phone number</option><option value="url">Website</option></Select></div>
+
+                  <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={selected.clickable} disabled={selected.field_type === "text"} onChange={(event) => changeLocal(selected.id, { clickable: event.target.checked })} />Make this a clickable link</label>
+                  <div><Label htmlFor="signature-custom-link">Custom link · optional</Label><Input id="signature-custom-link" value={selected.url ?? ""} onChange={(event) => changeLocal(selected.id, { url: event.target.value || null })} placeholder="Leave empty to link to the displayed value" /></div><p className="text-xs leading-5 text-[var(--muted-foreground)]">Choose Email, Phone, or Website to enable a link. Leave the custom link blank to use the displayed value.</p></div>
+                  <div className="space-y-3 rounded-lg bg-[var(--surface-hover)] p-4"><h3 className="text-xs font-semibold normal-case text-[var(--muted-foreground)]">Appearance</h3><label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={selected.style_preference?.bold === true} onChange={(event) => changeLocal(selected.id, { style_preference: { ...selected.style_preference, bold: event.target.checked } })} />Bold text</label><div><Label htmlFor="signature-label">Label · optional</Label><Input id="signature-label" placeholder="e.g. Phone" value={selected.label} onChange={(event) => changeLocal(selected.id, { label: event.target.value })} /></div>
+                  <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={selected.show_label} onChange={(event) => changeLocal(selected.id, { show_label: event.target.checked })} />Display the label before the text</label>
+                  </div>
+                </div></details>
+              </>}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-5">
+                <label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={selected.enabled} onChange={(event) => changeLocal(selected.id, { enabled: event.target.checked })} />Show this block in my signature</label>
+                <Button variant="ghost" className="text-[var(--danger)]" onClick={() => runAction(() => removeField(selected.id))}><Trash2 size={15} />Delete block</Button>
+              </div>
+            </CardContent></Card> : <Card><CardContent className="py-12 text-left text-sm text-[var(--muted-foreground)]">Add or select a block to edit its details here.</CardContent></Card>}
+          <Card className="min-w-0 lg:col-span-2 2xl:col-span-1"><CardHeader><CardTitle>Signature preview</CardTitle><p className="mt-2 text-xs text-[var(--muted-foreground)]">Updates as you edit. Save to use your changes in emails.</p></CardHeader><CardContent className="p-6 sm:p-8"><p className="mb-6 break-all text-xs text-[var(--muted-foreground)]">From: {microsoftEmail || "Your connected Microsoft mailbox"}</p><div className="email-content min-h-40 break-words">{preview ? <div dangerouslySetInnerHTML={{ __html: preview }} /> : <p className="text-sm text-[#52647b]">No signature will be added.</p>}</div></CardContent></Card>
         </div>
-        <div>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wider text-[#71807a]">Email preview</div>
-          <div className="rounded-xl border bg-[#f7f9f8] p-3 text-xs text-[#68736f]">From: <strong className="text-[#26322f]">{microsoftEmail || "Connect Microsoft 365 below"}</strong></div>
-          <div className="mt-3 min-h-72 rounded-xl border bg-white p-6 shadow-sm">{preview ? <div dangerouslySetInnerHTML={{ __html: preview }} /> : <p className="text-sm text-[#8a9490]">No signature will be added.</p>}</div>
-        </div>
-      </CardContent>
-    </Card>
+      </fieldset>
+      <p className="text-xs leading-6 text-[var(--muted-foreground)]">Save text and formatting with Save signature. New blocks, uploads, ordering, and deletions apply immediately. Templates include it using {"{{signature}}"} or their signature placement setting.</p>
+    </div>
   );
 }

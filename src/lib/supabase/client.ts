@@ -10,7 +10,7 @@ export function isSupabaseConfigured() {
 }
 
 export function getSupabaseBrowserClient() {
-  if (!isSupabaseConfigured()) throw new Error("Supabase is not configured. Add the public URL and anon key to .env.local.");
+  if (!isSupabaseConfigured()) throw new Error("Sign-in is temporarily unavailable. Contact the application administrator.");
   client ??= createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   return client;
 }

@@ -1,0 +1,1 @@
+export default function Loading() { return <div className="page-shell" role="status" aria-label="Loading workspace"><div className="h-8 w-60 animate-pulse rounded-lg bg-[var(--muted)]" /><div className="mt-6 h-72 animate-pulse rounded-2xl border bg-[var(--card)]" /><p className="mt-4 text-sm text-[var(--muted-foreground)]">Loading your workspace…</p></div>; }

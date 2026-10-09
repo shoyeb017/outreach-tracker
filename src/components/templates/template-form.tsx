@@ -1,21 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, Eye, LoaderCircle, Save } from "lucide-react";
+import { ArrowLeft, Copy, Eye, LoaderCircle, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { RichEmailEditor } from "@/components/editor/rich-email-editor";
+import { Dialog } from "@/components/ui/dialog";
+import { renderSignature } from "@/lib/email/signature";
+import { normalizeSignatureTokenBlocks } from "@/lib/email/render";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { extractPlaceholders, sanitizeEmailHtml } from "@/lib/templates/placeholders";
-import type { EmailTemplate } from "@/types";
+import { extractPlaceholders, resolvePlaceholders, sanitizeEmailHtml } from "@/lib/templates/placeholders";
+import type { EmailTemplate, SignatureField } from "@/types";
 
 const standardPlaceholders = [
   { group: "Spreadsheet suggestions", label: "Recipient email", token: "{{recipient_email}}" },
@@ -33,11 +35,15 @@ const standardPlaceholders = [
   { group: "System", label: "Complete signature", token: "{{signature}}" },
 ];
 
-export function TemplateForm({ template, duplicate = false }: { template?: EmailTemplate; duplicate?: boolean }) {
+export function TemplateForm({ template, duplicate = false, signatureFields = [], sampleData = {} }: { template?: EmailTemplate; duplicate?: boolean; signatureFields?: SignatureField[]; sampleData?: Record<string, unknown> }) {
   const router = useRouter();
   const systemLocked = Boolean(template?.is_system && !duplicate);
+  const [fieldName, setFieldName] = useState("");
+  const [fieldTarget, setFieldTarget] = useState("body");
+  const [formError, setFormError] = useState("");
+  const [fieldError, setFieldError] = useState("");
   const [pending, setPending] = useState(false);
-  const [preview, setPreview] = useState(false);
+  const [preview, setPreview] = useState(true);
   const [help, setHelp] = useState(false);
   const [name, setName] = useState(duplicate ? `${template?.name} copy` : template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
@@ -57,13 +63,35 @@ export function TemplateForm({ template, duplicate = false }: { template?: Email
     return Array.from(uniqueByToken.values());
   }, [used]);
 
+  const currentDraft = JSON.stringify({ name, description, category, subject, html, plain, signatureBehavior, active });
+  const [savedDraft, setSavedDraft] = useState(currentDraft);
+  const dirty = !systemLocked && (duplicate || !template || currentDraft !== savedDraft);
+  useEffect(() => { if (!dirty) return; const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty]);
+  const [previewValues, setPreviewValues] = useState<Record<string, string>>({});
+  const demo: Record<string, unknown> = { company_name: "Northstar Labs", company: "Northstar Labs", recipient_name: "Avery Morgan", first_name: "Avery", industry: "Technology & Software", recipient_email: "contact@example.com", ...sampleData, ...previewValues };
+  for (const token of used) if (demo[token] == null && token !== "signature") demo[token] = "Example value";
+  const signature = signatureBehavior === "none" ? "" : renderSignature(signatureFields);
+  const previewContext: Record<string, unknown> = { ...demo, signature };
+  // Dot paths remain editable in the sample preview as well as normal fields.
+  for (const token of used.filter((token) => token.includes("."))) {
+    const parts = token.split("."); if (parts.some((part) => ["__proto__", "constructor", "prototype"].includes(part))) continue;
+    let node = previewContext;
+    for (const part of parts.slice(0, -1)) { node[part] = { ...((node[part] as Record<string, unknown>) ?? {}) }; node = node[part] as Record<string, unknown>; }
+    node[parts.at(-1)!] = demo[token] ?? "Example value";
+  }
+  const sampleSubject = resolvePlaceholders(subject, previewContext).output;
+  let sampleBody = resolvePlaceholders(normalizeSignatureTokenBlocks(html), previewContext, true).output;
+  if (signatureBehavior === "append" && !extractPlaceholders(html).includes("signature")) sampleBody += signature;
+
   function insertSubject(token: string) {
     setSubject((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}${token}`);
   }
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (systemLocked) return;
+    if (systemLocked || pending) return;
+    if (!name.trim() || !subject.trim() || !sanitizeEmailHtml(html).replace(/<[^>]*>/g, "").trim()) { setFormError("Add a template name, an email subject, and a message before saving."); return; }
+    setFormError("");
     setPending(true);
     try {
       const supabase = getSupabaseBrowserClient();
@@ -72,66 +100,78 @@ export function TemplateForm({ template, duplicate = false }: { template?: Email
       const payload = {
         name: name.trim(), description: description.trim() || null, category: category.trim() || null,
         subject_template: subject, html_body: sanitizeEmailHtml(html), plain_text_body: plain.trim() || null,
-        signature_behavior: signatureBehavior, is_active: active, is_archived: false,
+        signature_behavior: signatureBehavior, is_active: active, is_archived: template && !duplicate ? template.is_archived : false,
       };
       if (template && !duplicate) {
         const { error } = await supabase.from("templates").update(payload).eq("id", template.id);
         if (error) throw error;
-        toast.success("Template saved"); router.refresh();
+        setSavedDraft(currentDraft); toast.success("Template saved"); router.refresh();
       } else {
         const { data, error } = await supabase.from("templates").insert({ ...payload, user_id: user.id, is_system: false }).select("id").single();
         if (error) throw error;
         toast.success("Template created"); router.push(`/templates/${data.id}`); router.refresh();
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save template.");
+      const message = error instanceof Error ? error.message : "Could not save template. Please try again.";
+      setFormError(message); toast.error(message);
     } finally { setPending(false); }
   }
 
+  function addField() {
+    const field = fieldName.trim().replace(/^{{\s*|\s*}}$/g, "");
+    if (!/^[a-zA-Z0-9_]+(?:[.-][a-zA-Z0-9_]+)*$/.test(field) || field.split(".").some((part) => ["__proto__", "prototype", "constructor"].includes(part))) {
+      setFieldError("Use a field name such as company_name or contact.name, without spaces."); return;
+    }
+    const token = "{{" + field + "}}";
+    if (fieldTarget === "subject") insertSubject(token); else setHtml((value) => value + "<p>" + token + "</p>");
+    setFieldName(""); setFieldError("");
+  }
+
   return (
-    <form onSubmit={save} className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <div className="space-y-6">
-        {systemLocked && <Card className="border-[#b9cee9] bg-[#f5f8fd]"><CardContent className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><div className="font-semibold text-[#244b86]">This system template is read-only</div><p className="mt-1 text-sm text-[#536b8f]">Create a personal copy to change its wording, subject, placeholders, or publishing status.</p></div><Link href={`/templates/${template?.id}?duplicate=1`}><Button className="w-full sm:w-auto"><Copy size={15} />Duplicate to edit</Button></Link></CardContent></Card>}
-        {!systemLocked && <Card className="border-[#cfe2da] bg-[#f5faf8]"><CardContent><div className="font-semibold text-[#176b55]">Use any placeholder you need</div><p className="mt-1 text-sm leading-6 text-[#5f6f69]">Type any safe name inside double braces, such as <code>{"{{decision_maker}}"}</code> or <code>{"{{annual_revenue}}"}</code>. It is detected automatically and will be mapped to a spreadsheet column inside each dataset.</p></CardContent></Card>}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div><CardTitle>Template details</CardTitle>{template?.is_system && <p className="mt-1 text-xs text-[#68736f]">System templates are read-only. Duplicate this template to customize it.</p>}</div>
-            {template?.is_system && <Badge>System</Badge>}
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} required disabled={systemLocked} /></div>
-            <div><Label>Routing category (exact-match label)</Label><Input value={category} onChange={(e) => setCategory(e.target.value)} disabled={systemLocked} /><p className="mt-1 text-xs text-[#68736f]">Dataset selection-key values match this Category first, then the template Name.</p></div>
-            <div className="md:col-span-2"><Label>Description</Label><Textarea value={description} onChange={(e) => setDescription(e.target.value)} disabled={systemLocked} /></div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Subject</CardTitle></CardHeader>
-          <CardContent>
-            <Input value={subject} onChange={(e) => setSubject(e.target.value)} required disabled={systemLocked} />
-            <select aria-label="Insert subject placeholder" className="mt-2 h-9 rounded-lg border bg-white px-3 text-xs font-semibold" value="" disabled={systemLocked} onChange={(event) => { if (event.target.value) insertSubject(event.target.value); event.target.value = ""; }}>
-              <option value="">Insert placeholder</option>
-              {placeholders.map((item) => <option key={item.token} value={item.token}>{item.label} · {item.token}</option>)}
-            </select>
-          </CardContent>
-        </Card>
-        <Card><CardHeader><CardTitle>Email body</CardTitle></CardHeader><CardContent>{systemLocked ? <div className="min-h-64 rounded-lg border bg-[#fafbfb] p-5 text-sm leading-7" dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(html) }} /> : <RichEmailEditor value={html} onChange={setHtml} placeholders={placeholders} />}</CardContent></Card>
-        <Card><CardHeader><CardTitle>Plain-text fallback</CardTitle></CardHeader><CardContent><Textarea className="min-h-40 font-mono text-xs" value={plain} onChange={(e) => setPlain(e.target.value)} disabled={systemLocked} placeholder="Optional plain-text version" /></CardContent></Card>
+    <form onSubmit={save} className="space-y-5">
+      {systemLocked && <div className="flex flex-col justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--muted)] p-4 sm:flex-row sm:items-center"><div><p className="font-semibold">Ready-made template · read-only</p><p className="mt-1 text-sm text-[var(--muted-foreground)]">Make your own copy to change the wording or settings.</p></div><ButtonLink href={`/templates/${template?.id}?duplicate=1`}><Copy size={15} />Make a copy</ButtonLink></div>}
+      {template?.is_archived && !duplicate && <p className="rounded-xl border bg-[var(--muted)] p-4 text-sm">This template is archived and cannot be selected for sending. Saving edits keeps it archived. Restore it from More options to use it again.</p>}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-[var(--card)] p-3">
+        <div><ButtonLink href="/templates" variant="ghost" size="sm" onClick={(event) => { if (dirty && !window.confirm("Leave without saving your template changes?")) event.preventDefault(); }}><ArrowLeft size={14} />Back to templates</ButtonLink><p className="mt-1 px-3 text-xs text-[var(--muted-foreground)]" role="status">{systemLocked ? "Read-only template" : pending ? "Saving…" : dirty ? "Unsaved changes" : "All changes saved"}</p></div>
+        <div className="flex min-w-0 flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => { setPreview(true); document.getElementById("template-preview")?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }}><Eye size={15} />Preview</Button>{!systemLocked && <Button type="submit" disabled={pending}>{pending ? <LoaderCircle size={15} className="animate-spin" /> : <Save size={15} />}{template && !duplicate ? "Save changes" : "Create template"}</Button>}</div>
       </div>
-      <aside className="space-y-6">
-        <Card>
-          <CardHeader><CardTitle>Publishing</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div><Label>Signature behavior</Label><Select value={signatureBehavior} onChange={(e) => setSignatureBehavior(e.target.value as typeof signatureBehavior)} disabled={systemLocked}><option value="token_only">Use only where {`{{signature}}`} appears</option><option value="append">Append current signature</option><option value="none">No signature</option></Select></div>
-            <label className="flex items-center gap-2 text-sm font-medium"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} disabled={systemLocked} />Active and available for routing</label>
-            <Button type="button" variant="outline" className="w-full" onClick={() => setPreview((value) => !value)}><Eye size={15} />{preview ? "Hide preview" : "Preview"}</Button>
-            {!systemLocked && <Button type="submit" className="w-full" disabled={pending || !name.trim() || !subject.trim()}>{pending ? <LoaderCircle className="animate-spin" size={15} /> : <Save size={15} />}{template && !duplicate ? "Save changes" : "Create template"}</Button>}
-            <Link href="/templates"><Button type="button" variant="ghost" className="w-full"><ArrowLeft size={15} />Back to templates</Button></Link>
-          </CardContent>
-        </Card>
-        <Card><CardHeader><CardTitle>Automatically detected placeholders</CardTitle></CardHeader><CardContent>{used.length ? <div className="flex flex-wrap gap-2">{used.map((token) => <Badge key={token} tone="info">{`{{${token}}}`}</Badge>)}</div> : <p className="text-sm text-[#7a8581]">Type a placeholder in the subject, email body, or plain-text fallback and it will appear here automatically.</p>}<p className="mt-4 text-xs leading-5 text-[#68736f]">Only {`{{signature}}`} is supplied by Settings. Every other placeholder is connected to a spreadsheet column in the dataset. The From address always comes from Microsoft 365.</p><Button type="button" className="mt-4 w-full" variant="outline" onClick={() => setHelp(true)}>Placeholder help</Button></CardContent></Card>
-        {help && <div className="fixed inset-0 z-50 grid place-items-center bg-[#10211b]/45 p-4" role="dialog" aria-modal="true"><Card className="w-full max-w-lg shadow-2xl"><CardHeader><CardTitle>Template placeholders</CardTitle></CardHeader><CardContent><div className="max-h-96 divide-y overflow-auto">{placeholders.map((item) => <div className="py-3" key={`${item.group}-${item.token}`}><code className="text-sm font-semibold text-[#176b55]">{item.token}</code><div className="mt-1 text-xs text-[#68736f]">{item.label} - {item.group}</div></div>)}</div><p className="mt-4 text-xs leading-5 text-[#68736f]">Suggestions are optional. Any placeholder typed with double braces is detected automatically. Dataset placeholders must be connected to spreadsheet columns before sending; missing values block only the affected rows.</p><Button type="button" className="mt-5 w-full" onClick={() => setHelp(false)}>Close</Button></CardContent></Card></div>}
-        {preview && <Card><CardHeader><CardTitle>Email preview</CardTitle></CardHeader><CardContent><div className="border-b pb-3"><div className="text-[10px] font-bold uppercase text-[#8a9490]">Subject</div><div className="mt-1 text-sm font-semibold">{subject}</div></div><div className="pt-4 text-sm leading-6" dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(html) }} /></CardContent></Card>}
-      </aside>
+      {formError && <p role="alert" className="rounded-xl border border-[var(--border)] bg-[var(--muted)] p-4 text-sm text-[var(--danger)]">{formError}</p>}
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,430px)]">
+        <div className="space-y-5">
+          <Card><CardContent className="space-y-4">
+            <div><Label htmlFor="template-name">Name</Label><Input id="template-name" placeholder="e.g. Introduction for technology companies" value={name} onChange={(e) => setName(e.target.value)} required disabled={systemLocked} /><p className="mt-1 text-xs text-[var(--muted-foreground)]">An internal name to help you find this template. Recipients will not see it.</p></div>
+            <details className="rounded-lg border p-3"><summary className="cursor-pointer text-sm font-semibold">Category and description <span className="font-normal text-[var(--muted-foreground)]">· optional</span></summary><div className="mt-4 space-y-4">
+              <div><Label htmlFor="template-category">Category</Label><Input id="template-category" placeholder="e.g. Technology & Software" value={category} onChange={(e) => setCategory(e.target.value)} disabled={systemLocked} /><p className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">When choosing different templates by a spreadsheet column, its values match this category first, then the template name. Leave blank if everyone gets the same template.</p></div>
+              <div><Label htmlFor="template-description">Description</Label><Textarea id="template-description" placeholder="When should your team use this message?" value={description} onChange={(e) => setDescription(e.target.value)} disabled={systemLocked} /></div>
+            </div></details>
+          </CardContent></Card>
+          <Card><CardHeader><CardTitle>Write your email</CardTitle><p className="text-sm text-[var(--muted-foreground)]">Write a message once. Personal fields change for each recipient.</p></CardHeader><CardContent className="space-y-5">
+            <div><Label htmlFor="template-subject">Email subject</Label><Input id="template-subject" placeholder="e.g. An idea for {{company_name}}" value={subject} onChange={(e) => setSubject(e.target.value)} required disabled={systemLocked} />
+              <Select aria-label="Insert subject placeholder" className="mt-2" value="" disabled={systemLocked} onChange={(event) => { if (event.target.value) insertSubject(event.target.value); }}><option value="">Add a field to the subject…</option>{placeholders.map((item) => <option key={item.token} value={item.token}>{item.label} · {item.token}</option>)}</Select>
+            </div>
+            <div><Label>Email message</Label>{systemLocked ? <div className="min-h-64 rounded-lg border bg-[var(--muted)] p-5 text-sm leading-7" dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(html) }} /> : <RichEmailEditor value={html} onChange={setHtml} placeholders={placeholders} />}</div>
+            <div className="rounded-lg bg-[var(--surface-hover)] p-3"><Label htmlFor="signature-behavior">Email signature</Label><Select id="signature-behavior" value={signatureBehavior} onChange={(e) => setSignatureBehavior(e.target.value as typeof signatureBehavior)} disabled={systemLocked}><option value="token_only">Place it where {"{{signature}}"} appears</option><option value="append">Add my signature at the end</option><option value="none">No signature</option></Select><p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">Your signature is managed in Settings. Your sending address comes from the connected Microsoft mailbox.</p></div>
+          </CardContent></Card>
+          <Card><CardContent><details><summary className="cursor-pointer text-sm font-semibold">More settings</summary><div className="mt-4 space-y-4">
+            <label className="flex items-start gap-2 text-sm"><input className="mt-1" type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} disabled={systemLocked} /><span>Available when choosing templates<span className="mt-1 block text-xs text-[var(--muted-foreground)]">Turn off to keep this template without offering it for new email setups.</span></span></label>
+            <div><Label htmlFor="template-plain">Plain-text alternative · optional</Label><Textarea id="template-plain" aria-label="Optional plain-text email" className="min-h-32 font-mono text-xs" value={plain} onChange={(e) => setPlain(e.target.value)} disabled={systemLocked} /><p className="mt-1 text-xs text-[var(--muted-foreground)]">For email clients that cannot display formatted messages.</p></div>
+          </div></details></CardContent></Card>
+        </div>
+        <aside className="space-y-5 xl:sticky xl:top-6">
+          {preview && <Card id="template-preview"><CardHeader><div className="flex items-center justify-between"><CardTitle>Sample email preview</CardTitle><Badge tone="info">Live preview</Badge></div><p className="text-xs leading-5 text-[var(--muted-foreground)]">Sample values only. No email is sent. Review actual recipients in your spreadsheet before sending.</p></CardHeader><CardContent>
+            <div className="border-b pb-4"><p className="text-xs text-[var(--muted-foreground)]">Subject</p><p className="mt-1 break-words text-sm font-semibold">{sampleSubject || "Your subject will appear here"}</p></div>
+            <div className="email-content break-words py-5 text-sm leading-6" dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(sampleBody) }} />
+            {!!used.filter((token) => token !== "signature").length && <details className="border-t pt-3"><summary className="cursor-pointer text-sm font-semibold">Change sample values</summary><p className="mt-2 text-xs text-[var(--muted-foreground)]">These examples are not saved to your template or spreadsheet.</p><div className="mt-3 space-y-3">{used.filter((token) => token !== "signature").map((token) => <label key={token} className="block text-xs">{`{{${token}}}`}<Input value={String(previewValues[token] ?? demo[token] ?? "Example value")} onChange={(event) => setPreviewValues((current) => ({ ...current, [token]: event.target.value }))} /></label>)}</div></details>}
+          </CardContent></Card>}
+          <Card><CardHeader><CardTitle>Personalize your message</CardTitle></CardHeader><CardContent className="space-y-4">
+            <p className="text-sm leading-6 text-[var(--muted-foreground)]">A field such as <code>{"{{company_name}}"}</code> is replaced with a value from your spreadsheet. You choose its column during spreadsheet setup.</p>
+            {!systemLocked && <div className="rounded-lg border p-3"><Label htmlFor="new-field">Add your own field</Label><Input id="new-field" placeholder="e.g. decision_maker" value={fieldName} onChange={(event) => setFieldName(event.target.value)} /><Label htmlFor="field-target" className="mt-3 block">Add it to</Label><Select id="field-target" value={fieldTarget} onChange={(event) => setFieldTarget(event.target.value)}><option value="body">End of the message</option><option value="subject">End of the subject</option></Select><Button type="button" variant="outline" className="mt-3 w-full" onClick={addField} disabled={!fieldName.trim()}><Plus size={14} />Add field</Button>{fieldError && <p role="alert" className="mt-2 text-xs text-[var(--danger)]">{fieldError}</p>}<p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">You can also type any field directly using double braces.</p></div>}
+            <div><p className="mb-2 text-xs font-semibold">Fields detected in this template ({used.length})</p>{used.length ? <div className="flex flex-wrap gap-2">{used.map((token) => <Badge key={token} tone="info">{`{{${token}}}`}</Badge>)}</div> : <p className="text-xs text-[var(--muted-foreground)]">No personal fields yet. You can send the same wording to everyone.</p>}</div>
+            <p className="text-xs leading-5 text-[var(--muted-foreground)]">Only {"{{signature}}"} uses Settings. Every other field needs a spreadsheet column before sending.</p><Button type="button" variant="ghost" onClick={() => setHelp(true)}>Personalization help</Button>
+          </CardContent></Card>
+        </aside>
+      </div>
+      {help && <Dialog title="Personalization fields" onClose={() => setHelp(false)}><p className="mb-4 text-sm leading-6">Use these suggestions or create your own. Later, connect each field to the spreadsheet column that supplies its value. Missing values block the affected recipients until you fix them.</p><div className="max-h-80 divide-y overflow-auto">{placeholders.map((item) => <div className="py-3" key={item.token}><code className="text-sm font-semibold text-[var(--primary)]">{item.token}</code><p className="mt-1 text-xs text-[var(--muted-foreground)]">{item.label} · {item.group}</p></div>)}</div><Button type="button" className="mt-4 w-full" onClick={() => setHelp(false)}>Close</Button></Dialog>}
     </form>
   );
 }

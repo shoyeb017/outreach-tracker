@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { Archive, ArchiveRestore, Copy, Eye, Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function TemplateActions({ id, name, isSystem, archived, showOpen = true }: { id: string; name: string; isSystem: boolean; archived: boolean; showOpen?: boolean }) {
@@ -30,9 +29,14 @@ export function TemplateActions({ id, name, isSystem, archived, showOpen = true 
   }
 
   return <div className="flex flex-wrap gap-2">
-    {showOpen && <Link href={`/templates/${id}`}><Button variant="outline" size="sm">{isSystem ? <Eye size={14} /> : <Pencil size={14} />}{isSystem ? "View" : "Edit"}</Button></Link>}
-    <Link href={`/templates/${id}?duplicate=1`}><Button variant={isSystem ? "default" : "ghost"} size="sm"><Copy size={14} />{isSystem ? "Duplicate to edit" : "Duplicate"}</Button></Link>
-    {!isSystem && <Button variant="ghost" size="sm" disabled={pending} onClick={toggleArchive}>{archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{archived ? "Restore" : "Archive"}</Button>}
-    {!isSystem && <Button className="text-[#9b241c] hover:bg-[#fde8e6] hover:text-[#9b241c]" variant="ghost" size="sm" disabled={pending} onClick={remove}><Trash2 size={14} />Delete</Button>}
+    {showOpen && <ButtonLink href={`/templates/${id}`} variant="outline" size="sm">{isSystem ? <Eye size={14} /> : <Pencil size={14} />}{isSystem ? "View" : "Edit"}</ButtonLink>}
+    {isSystem ? <ButtonLink href={`/templates/${id}?duplicate=1`} size="sm"><Copy size={14} />Make a copy</ButtonLink> : <details className="relative">
+      <summary className="cursor-pointer rounded-lg px-3 py-2 text-xs font-semibold hover:bg-[var(--muted)]">More options</summary>
+      <div className="absolute right-0 z-20 mt-1 flex min-w-44 flex-col items-stretch rounded-xl border bg-[var(--card)] p-2">
+        <ButtonLink href={`/templates/${id}?duplicate=1`} variant="ghost" size="sm"><Copy size={14} />Make a copy</ButtonLink>
+        <Button variant="ghost" size="sm" disabled={pending} onClick={toggleArchive}>{archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{archived ? "Restore" : "Archive"}</Button>
+        <Button className="text-[var(--danger)] hover:bg-[var(--muted)] hover:text-[var(--danger)]" variant="ghost" size="sm" disabled={pending} onClick={remove}><Trash2 size={14} />Delete</Button>
+      </div>
+    </details>}
   </div>;
 }

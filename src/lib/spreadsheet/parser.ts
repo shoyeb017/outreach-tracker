@@ -29,11 +29,15 @@ export function normalizeColumnSlug(label: string): string {
 
 export function createUniqueSlugs(labels: string[]): string[] {
   const counts = new Map<string, number>();
+  const used = new Set<string>();
   return labels.map((label) => {
     const base = normalizeColumnSlug(label);
-    const count = (counts.get(base) ?? 0) + 1;
+    let count = (counts.get(base) ?? 0) + 1;
+    let slug = count === 1 ? base : `${base}_${count}`;
+    while (used.has(slug)) { count++; slug = `${base}_${count}`; }
     counts.set(base, count);
-    return count === 1 ? base : `${base}_${count}`;
+    used.add(slug);
+    return slug;
   });
 }
 
@@ -114,8 +118,8 @@ export function mapImportedRow(
 
 export function createExampleWorkbook(format: "csv" | "xlsx") {
   const rows = [
-    { "Recipient Name": "Avery Chen", "Recipient Email": "avery@example.com", "Company Name": "Northstar Labs", Category: "Customer", Subject: "A quick hello", City: "Seattle" },
-    { "Recipient Name": "Jordan Patel", "Recipient Email": "jordan@example.com", "Company Name": "Harbor Works", Category: "Supplier", Subject: "", City: "Austin" },
+    { "Recipient Name": "Avery Chen", "Public Email": "avery@example.com", "Business Name": "Northstar Labs", Industry: "Technology & Software", Subject: "A quick hello", City: "Seattle" },
+    { "Recipient Name": "Jordan Patel", "Public Email": "jordan@example.com", "Business Name": "Harbor Works", Industry: "Manufacturing & Industrial", Subject: "", City: "Austin" },
   ];
   const sheet = XLSX.utils.json_to_sheet(rows);
   if (format === "csv") return new Blob([XLSX.utils.sheet_to_csv(sheet)], { type: "text/csv;charset=utf-8" });

@@ -30,6 +30,7 @@ describe("template resolution", () => {
     expect(normalizeRoutingValue("  FINANCIAL   Services & Banking ")).toBe("financial services & banking");
     expect(suggestTemplate("financial services & banking", templates as never)?.id).toBe("finance");
     expect(suggestTemplate("bank", templates as never)).toBeNull();
+    expect(suggestTemplate("Financial Services & Banking", [...templates, { ...templates[0], id: "personal-copy" }] as never)).toBeNull();
   });
 
   it("consolidates equivalent routing labels before a database upsert", () => {

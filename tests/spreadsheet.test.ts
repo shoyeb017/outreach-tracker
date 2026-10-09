@@ -6,6 +6,7 @@ describe("spreadsheet parsing and mapping", () => {
   it("normalizes custom headers and prevents slug collisions", () => {
     expect(normalizeColumnSlug(" Annual Révenue ")).toBe("annual_revenue");
     expect(createUniqueSlugs(["Company Name", "company-name", "", ""])).toEqual(["company_name", "company_name_2", "column", "column_2"]);
+    expect(new Set(createUniqueSlugs(["Company", "Company", "Company_2"])).size).toBe(3);
   });
 
   it("parses XLSX rows and reports quality signals", () => {

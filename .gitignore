@@ -1,8 +1,14 @@
 node_modules
 .next
-.env
-.env.local
+.env*
+!.env.example
 coverage
 *.log
 *.tsbuildinfo
 .vercel
+test-results
+playwright-report
+/.codex/
+/.agents/
+.DS_Store
+Thumbs.db

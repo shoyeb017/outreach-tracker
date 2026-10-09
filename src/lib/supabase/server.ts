@@ -1,10 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { isUiTestMode } from "@/lib/config/ui-test-mode";
 
 export async function getSupabaseServerClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
+  if (!url || !key) {
+    if (isUiTestMode()) return null;
+    throw new Error("Application configuration is incomplete. Contact the application administrator.");
+  }
   const cookieStore = await cookies();
   return createServerClient(url, key, {
     cookies: {

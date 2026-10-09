@@ -3,11 +3,11 @@ import { cn } from "@/lib/utils";
 
 export function Badge({ className, tone = "neutral", ...props }: React.HTMLAttributes<HTMLSpanElement> & { tone?: "neutral" | "success" | "warning" | "danger" | "info" }) {
   const tones = {
-    neutral: "bg-[#eef1f0] text-[#53605c]",
-    success: "bg-[#e4f4ec] text-[#176b55]",
-    warning: "bg-[#fff2d9] text-[#895006]",
-    danger: "bg-[#fde8e6] text-[#9b241c]",
-    info: "bg-[#e8effc] text-[#315b9e]",
+    neutral: "bg-[var(--muted)] text-[var(--muted-foreground)]",
+    success: "bg-[var(--success-soft)] text-[var(--success)]",
+    warning: "bg-[var(--warning-soft)] text-[var(--warning)]",
+    danger: "bg-[var(--danger-soft)] text-[var(--danger)]",
+    info: "bg-[var(--info-soft)] text-[var(--info)]",
   };
-  return <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide", tones[tone], className)} {...props} />;
+  return <span className={cn("inline-flex min-w-0 items-center max-w-full gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold leading-5 whitespace-normal [overflow-wrap:anywhere]", tones[tone], className)} {...props} />;
 }

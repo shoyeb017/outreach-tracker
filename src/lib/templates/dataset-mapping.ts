@@ -23,6 +23,6 @@ export function templatesUsedByDataset(
   return templates.filter((template) => ids.has(template.id));
 }
 
-export function dataPlaceholdersForTemplates(templates: Pick<EmailTemplate, "subject_template" | "html_body" | "plain_text_body">[]) {
-  return Array.from(new Set(templates.flatMap(templatePlaceholders))).filter((placeholder) => !isSenderPlaceholder(placeholder)).sort();
+export function dataPlaceholdersForTemplates(templates: Pick<EmailTemplate, "subject_template" | "html_body" | "plain_text_body">[], includeSubject = true) {
+  return Array.from(new Set(templates.flatMap((template) => templatePlaceholders(includeSubject ? template : { ...template, subject_template: "" })))).filter((placeholder) => !isSenderPlaceholder(placeholder)).sort();
 }

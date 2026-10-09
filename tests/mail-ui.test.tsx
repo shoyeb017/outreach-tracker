@@ -1,0 +1,70 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/components/editor/rich-email-editor", () => ({ RichEmailEditor: ({ value, onChange }: { value: string; onChange: (html: string) => void }) => <textarea aria-label="Email message" value={value} onChange={(event) => onChange(event.target.value)} /> }));
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), create: vi.fn() }));
+vi.mock("@/lib/supabase/client", () => ({ getSupabaseBrowserClient: () => ({ rpc: mocks.rpc }) }));
+vi.mock("@/lib/microsoft/mailbox", () => ({ createMailboxClient: mocks.create }));
+import { MailComposer } from "@/components/mail/mail-composer";
+import { MailWorkspace } from "@/components/mail/mail-workspace";
+import { ComposeWorkspace } from "@/components/mail/compose-workspace";
+import { MailBody } from "@/components/mail/mail-body";
+import { draftParts, composeHtml, cleanMailHtml } from "@/lib/mail/html";
+import { UncertainSendError } from "@/lib/sending/errors";
+import type { MailboxClient } from "@/lib/microsoft/mailbox";
+import type { MicrosoftIntegration } from "@/types";
+const email = { id: "mail-1", subject: "Welcome", isRead: false, isDraft: false, bodyPreview: "Hello there", hasAttachments: false, receivedDateTime: "2026-10-09T00:00:00Z", from: { emailAddress: { name: "Alex", address: "alex@example.com" } }, toRecipients: [{ emailAddress: { address: "sender@example.com" } }], ccRecipients: [], body: { contentType: "HTML", content: "<p>Hello there</p>" } };
+let client: MailboxClient;
+beforeEach(() => {
+  vi.clearAllMocks(); HTMLDialogElement.prototype.showModal = function () { this.setAttribute("open", ""); }; HTMLDialogElement.prototype.close = function () { this.removeAttribute("open"); };
+  client = { list: vi.fn().mockResolvedValue({ messages: [email] }), get: vi.fn().mockResolvedValue(email), attachments: vi.fn().mockResolvedValue([]), enable: vi.fn(), markRead: vi.fn(), startReply: vi.fn(), startForward: vi.fn(), download: vi.fn(), save: vi.fn().mockResolvedValue({ id: "saved-draft" }), send: vi.fn(), sendNew: vi.fn() };
+  mocks.create.mockReturnValue(client); mocks.rpc.mockResolvedValue({ data: { suppressed: [] }, error: null });
+});
+afterEach(cleanup);
+function write() { fireEvent.change(screen.getByLabelText("To"), { target: { value: "reader@example.com" } }); fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "My email" } }); fireEvent.change(screen.getByLabelText("Email message"), { target: { value: "<p>Hello reader</p>" } }); }
+function composer() { return render(<MailComposer client={client} sender="sender@example.com" fields={[]} onClose={vi.fn()} onSaved={vi.fn()} />); }
+describe("mail editor and send safety", () => {
+  it("never sends until review and explicit confirmation", async () => { composer(); write(); fireEvent.click(screen.getByRole("button", { name: "Review and send" })); expect(screen.getByText("Confirm one real email")).toBeVisible(); expect(client.send).not.toHaveBeenCalled(); expect(client.sendNew).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Confirm — send real email" })); await waitFor(() => expect(client.sendNew).toHaveBeenCalledWith(expect.objectContaining({ to: "reader@example.com" }))); expect(client.save).not.toHaveBeenCalled(); expect(mocks.rpc).toHaveBeenCalledWith("send_recipient_protection", { p_emails: ["reader@example.com"] }); });
+  it("saves an incomplete draft without real sending or recipient checks", async () => { composer(); fireEvent.click(screen.getByRole("button", { name: "Save draft and close" })); await waitFor(() => expect(client.save).toHaveBeenCalled()); expect(client.send).not.toHaveBeenCalled(); expect(client.sendNew).not.toHaveBeenCalled(); expect(mocks.rpc).not.toHaveBeenCalled(); });
+  it("shows Cc and Bcc explanations", () => { composer(); fireEvent.click(screen.getByRole("button", { name: "Add Cc / Bcc" })); expect(screen.getByLabelText("Cc — visible to all recipients")).toBeVisible(); expect(screen.getByLabelText("Bcc — hidden from other recipients")).toBeVisible(); });
+  it("fails closed if safety checks are unavailable", async () => { mocks.rpc.mockResolvedValue({ data: null, error: new Error("unavailable") }); composer(); write(); fireEvent.click(screen.getByText("Review and send")); fireEvent.click(screen.getByText("Confirm — send real email")); await screen.findByRole("alert"); expect(client.save).not.toHaveBeenCalled(); expect(client.send).not.toHaveBeenCalled(); expect(client.sendNew).not.toHaveBeenCalled(); });
+  it("blocks suppressed recipients in any recipient field", async () => { mocks.rpc.mockResolvedValue({ data: { suppressed: ["reader@example.com"] }, error: null }); composer(); write(); fireEvent.click(screen.getByText("Review and send")); fireEvent.click(screen.getByText("Confirm — send real email")); await screen.findByText(/blocked by your suppression list/); expect(client.send).not.toHaveBeenCalled(); expect(client.sendNew).not.toHaveBeenCalled(); });
+  it("locks further sends after an uncertain result", async () => { vi.mocked(client.sendNew).mockRejectedValue(new UncertainSendError()); composer(); write(); fireEvent.click(screen.getByText("Review and send")); fireEvent.click(screen.getByText("Confirm — send real email")); await screen.findByText(/send result is unknown/); expect(screen.getByText("Confirm — send real email")).toBeDisabled(); expect(client.sendNew).toHaveBeenCalledTimes(1); });
+  it("preserves original external draft HTML rather than destructively loading it into the editor", () => { const html = '<table><tr><td>Original draft</td></tr></table>'; const parts = draftParts(html); expect(parts.protectedOriginal).toBe(true); expect(parts.quote).toContain("Original draft"); expect(parts.body).toBe("<p></p>"); });
+  it("resumes AUTMAIL composition, signature selection, and quote separately", () => { const parts = draftParts(composeHtml("<p>My text</p>", "<p>Signature</p>", "<p>Original</p>")); expect(parts.body).toContain("My text"); expect(parts.signature).toBe(true); expect(parts.quote).toContain("Original"); expect(parts.protectedOriginal).toBe(false); });
+  it("isolates untrusted email and blocks image network requests", () => { render(<MailBody html='<script>bad()</script><img src="https://tracker.test/pixel"><p onclick="bad()">Safe</p>' />); const frame = screen.getByTitle("Email content"); const html = frame.getAttribute("srcdoc")!; expect(html).not.toContain("<script>"); expect(html).not.toContain("onclick"); expect(html).toContain("img-src 'none'"); expect(frame).not.toHaveAttribute("sandbox", expect.stringContaining("allow-scripts")); expect(frame).not.toHaveAttribute("sandbox", expect.stringContaining("allow-same-origin")); });
+  it("removes remote CSS URLs from outgoing HTML", () => expect(cleanMailHtml('<p style="background-image:url(https://tracker.test)">Safe</p>')).not.toContain("url("));
+});
+describe("mail workspace", () => {
+  const integration = { connection_status: "connected", connected_email: "sender@example.com", home_account_id: "saved-account", tenant_id: "tenant", client_id: "client" } as MicrosoftIntegration;
+  it("opens a standalone Compose without loading Inbox or requesting reading consent", () => {
+    render(<ComposeWorkspace integration={integration} />);
+    expect(screen.getByRole("region", { name: "New email" })).toBeVisible();
+    expect(screen.getByText("sender@example.com")).toBeVisible();
+    expect(screen.getByLabelText("To")).toBeVisible();
+    expect(screen.getByLabelText("Cc — visible to all recipients")).toBeVisible();
+    expect(screen.getByLabelText("Bcc — hidden from other recipients")).toBeVisible();
+    expect(client.list).not.toHaveBeenCalled(); expect(client.enable).not.toHaveBeenCalled();
+    expect(screen.queryByRole("navigation", { name: "Mail folders" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("keeps a new Compose usable after draft permission is denied", async () => {
+    vi.mocked(client.save).mockRejectedValue(new Error("Microsoft administrator approval required"));
+    render(<ComposeWorkspace integration={integration} />); write();
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" })); await screen.findByRole("alert");
+    expect(screen.getByLabelText("Subject")).toHaveValue("My email");
+    fireEvent.click(screen.getByRole("button", { name: "Review and send" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm — send real email" }));
+    await waitFor(() => expect(client.sendNew).toHaveBeenCalledTimes(1));
+    expect(client.list).not.toHaveBeenCalled();
+  });
+  it("allows composing from Inbox even when reading permission is denied", async () => {
+    vi.mocked(client.list).mockRejectedValue(new Error("Mail.Read needs approval"));
+    render(<MailWorkspace integration={integration} />); await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Compose email" }));
+    expect(screen.getByRole("dialog", { name: "New email" })).toBeVisible();
+  });
+  it("explains connection requirements instead of displaying fake mail", () => { render(<MailWorkspace />); expect(screen.getByRole("link", { name: "Connect Microsoft email" })).toHaveAttribute("href", "/settings#microsoft"); expect(mocks.create).not.toHaveBeenCalled(); });
+  it("loads Inbox and opens message details without changing read state automatically", async () => { render(<MailWorkspace integration={integration} />); fireEvent.click(await screen.findByRole("button", { name: "Unread: Welcome" })); await screen.findByTitle("Email content"); expect(client.get).toHaveBeenCalledWith("mail-1"); expect(client.markRead).not.toHaveBeenCalled(); fireEvent.click(screen.getByText("Mark read")); await waitFor(() => expect(client.markRead).toHaveBeenCalledWith("mail-1", true)); });
+  it("switches to Sent and keeps folder requests scoped", async () => { render(<MailWorkspace integration={integration} />); await screen.findByText("Welcome"); fireEvent.click(screen.getByRole("button", { name: "Sent" })); await waitFor(() => expect(client.list).toHaveBeenCalledWith("sentitems", undefined)); });
+  it("requests permission only through Enable mailbox access", async () => { vi.mocked(client.list).mockRejectedValue(new Error("Enable mailbox access")); render(<MailWorkspace integration={integration} />); await screen.findByRole("alert"); expect(client.enable).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Enable mailbox access" })); await waitFor(() => expect(client.enable).toHaveBeenCalledTimes(1)); });
+});

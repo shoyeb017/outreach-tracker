@@ -27,10 +27,12 @@ export default async function DatasetPage({ params, searchParams }: { params: Pr
     supabase.from("send_runs").select("*,send_run_items(*)").eq("dataset_id", id).in("status", ["queued", "running", "paused"]).order("created_at", { ascending: false }),
   ]);
 
+  const loadError = datasetResult.error || columnsResult.error || rowsResult.error || templatesResult.error || rulesResult.error || placeholderMappingsResult.error || fieldsResult.error || integrationResult.error || preferencesResult.error || suppressionsResult.error || historyResult.error || runsResult.error;
+  if (loadError) throw new Error("Could not load the spreadsheet. Please try again.");
   if (!datasetResult.data) notFound();
   return (
     <main className="page-shell">
-      <PageHeader eyebrow="Dataset" title={datasetResult.data.name} description={`${datasetResult.data.row_count.toLocaleString()} imported rows · ${datasetResult.data.source_file_name || "Imported data"}`} />
+      <PageHeader eyebrow="Spreadsheet" title={datasetResult.data.name} description={`${datasetResult.data.row_count.toLocaleString()} imported rows · ${datasetResult.data.source_file_name || "Imported data"}`} />
       <DatasetWorkspace
         dataset={datasetResult.data}
         columns={columnsResult.data ?? []}

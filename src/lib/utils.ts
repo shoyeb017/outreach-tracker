@@ -5,7 +5,11 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const productName = process.env.NEXT_PUBLIC_PRODUCT_NAME?.trim() || "Mail Automation Studio";
+// One canonical identity across browser titles, headers, documentation, and test emails.
+// Legacy deployment variables must not silently restore the previous product name.
+export const brandName = "AUTMAIL";
+export const productTagline = "Email Automation System";
+export const productName = `${brandName} - ${productTagline}`;
 
 export function formatDate(value?: string | null) {
   if (!value) return "—";
