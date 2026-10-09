@@ -9,6 +9,9 @@ async function currentUser() {
   if (!client) throw new Error("Sign in before connecting Microsoft.");
   const { data: { user }, error } = await client.auth.getUser();
   if (error || !user) throw new Error("Sign in again before connecting Microsoft.");
+  const { data: access, error: accessError } = await client.rpc("workspace_access_allowed");
+  if (accessError) throw new Error("Account security checks are unavailable. Ask the administrator to apply the latest account-controls migration.");
+  if (!access) throw new Error("This account is being deleted. Its Microsoft connection cannot be changed.");
   return user;
 }
 function failure(error: unknown) { return Response.json({ error: error instanceof z.ZodError ? "Enter valid Client and Tenant IDs. Account-type overrides are optional advanced settings." : error instanceof Error ? error.message : "Microsoft configuration is unavailable." }, { status: 400, headers: { "Cache-Control": "no-store" } }); }

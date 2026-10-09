@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { LoaderCircle } from "lucide-react";
+import { ArrowLeft, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -63,7 +63,8 @@ export function AuthForm({ mode }: { mode: Mode }) {
   }
 
   return (
-    <div className="w-full max-w-md rounded-2xl border bg-[var(--card)] p-7">
+    <div className="auth-form-card w-full max-w-md border bg-[var(--card)] p-5 sm:p-7">
+      {(mode === "forgot" || mode === "update") && <Link href="/login" className="focus-ring mb-5 inline-flex items-center gap-2 text-sm text-[var(--primary)]"><ArrowLeft size={16} />Back to sign in</Link>}
       <h1 className="text-2xl font-semibold tracking-[-.035em]">{title}</h1>
       <p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">{subtitle}</p>
       <form className="mt-7 space-y-4" onSubmit={handleSubmit(submit)} noValidate>
@@ -73,7 +74,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         {requestError && <div role="alert" className="rounded-lg border border-[var(--border)] bg-[var(--muted)] px-3 py-2 text-sm text-[var(--danger)]">{requestError}</div>}
         <Button className="w-full" size="lg" type="submit" disabled={isSubmitting}>{isSubmitting && <LoaderCircle className="animate-spin" size={16} />}{mode === "login" ? "Sign in" : mode === "register" ? "Create account" : mode === "forgot" ? "Send reset link" : "Update password"}</Button>
       </form>
-      <div className="mt-6 border-t pt-5 text-left text-sm text-[var(--muted-foreground)]">{mode === "login" ? <>New here? <Link className="font-semibold text-[var(--primary)]" href="/register">Create an account</Link></> : mode === "register" ? <>Already have an account? <Link className="font-semibold text-[var(--primary)]" href="/login">Sign in</Link></> : <Link className="font-semibold text-[var(--primary)]" href="/login">Back to sign in</Link>}</div>
+      {(mode === "login" || mode === "register") && <div className="mt-6 border-t pt-5 text-left text-sm text-[var(--muted-foreground)]">{mode === "login" ? <>New here? <Link className="font-semibold text-[var(--primary)]" href="/register">Create an account</Link></> : <>Already have an account? <Link className="font-semibold text-[var(--primary)]" href="/login">Sign in</Link></>}</div>}
     </div>
   );
 }

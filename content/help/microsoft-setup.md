@@ -50,6 +50,8 @@ For the shared setup, the application administrator saves the IDs in the adminis
 
 Saving IDs is enough to attempt sign-in. Metadata detection is optional; without authorized metadata access, successful mailbox sign-in is not verified detection of the registration’s account types.
 
+Administrators who want automatic account-type detection can follow the [optional Application.Read.All reader setup](/help/permissions#optional-administrator-metadata-reader). Use a separate backend registration and Microsoft administrator consent; do not add this broad directory permission to the ordinary user's connection flow.
+
 Connect the intended mailbox and check the sender address. Run **Test connection**, then a separately confirmed real test only if you need to test actual sending.
 
 ## Official references

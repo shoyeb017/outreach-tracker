@@ -23,6 +23,7 @@ test("landing uses supplied branding, continuous rays and responsive mail visual
   expect(await page.locator(".landing-hero").evaluate((element) => element.getBoundingClientRect().width)).toBe(1536);
   expect(await page.locator(".landing-page").evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(248, 250, 255)");
   await expect(page.locator("nav .brand-logo-light")).toBeVisible();
+  await expect(page.locator(".landing-hero .landing-navigation")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(page.locator("nav .brand-logo-dark")).toBeHidden();
   await expect(page.getByRole("button", { name: /Pause animation|Play animation|Sign out/ })).toHaveCount(0);
   await expect(page.getByRole("img", { name: /Illustration of a spreadsheet/ })).toBeVisible();
@@ -42,6 +43,7 @@ test("landing uses supplied branding, continuous rays and responsive mail visual
   await page.getByRole("button", { name: "Switch to dark mode" }).click();
   expect(await page.locator(".landing-page").evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(0, 0, 0)");
   await expect(page.locator("nav .brand-logo-dark")).toBeVisible();
+  await expect(page.locator(".landing-hero .landing-navigation")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(page.locator("nav .brand-logo-light")).toBeHidden();
   expect(await originalCanvas!.evaluate((element) => element.isConnected)).toBe(true);
   await page.screenshot({ path: info.outputPath("mail-hero-dark-desktop.png"), fullPage: true });

@@ -166,13 +166,13 @@ Expand an error below for what happened, its likely cause, a fix, and a verifica
 
 ### Missing backend permission to read signInAudience
 
-**What happened:** Automatic audience detection is unavailable or denied.
+**What happened:** Automatic audience detection is unavailable or denied. You may see “Account-type metadata is unavailable.” This notice alone does not block mailbox sign-in.
 
 **Why it happened:** No reader, missing Application.Read.All approval, or unrelated/non-allowlisted tenant/app.
 
-**How to fix it:** For controlled registrations, configure the backend reader and explicit app allowlist. For third-party registrations use automatic sign-in; an explicit account-type override is optional. Never share client secrets or request broad directory permission from ordinary users.
+**How to fix it:** Normally leave Automatic sign-in selected and connect; metadata reading is optional. Administrators who need verified detection for controlled registrations can follow the [Application.Read.All setup guide](/help/permissions#optional-administrator-metadata-reader): use a separate backend reader, Microsoft Graph Application permissions, administrator consent, server-only reader settings, and an explicit app allowlist. For third-party registrations use automatic sign-in; an explicit account-type override is optional. Never share client secrets or request broad directory permission from ordinary users.
 
-**How to verify the fix:** Refresh and look for a fresh Verified label. Mailbox login alone does not verify registration metadata.
+**How to verify the fix:** If a reader was configured, Refresh configuration should show a fresh Verified label and verification time. If you intentionally leave the optional reader disabled, the notice can remain; connect and test the mailbox separately. Mailbox login alone does not verify registration metadata.
 
 ### Network loss / uncertain send outcome
 

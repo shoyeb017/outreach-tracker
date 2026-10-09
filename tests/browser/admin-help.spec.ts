@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 test("admin pages and APIs deny unauthenticated access",async({page,request})=>{
   await page.goto("/admin");await expect(page).toHaveURL(/\/login\?next=\/admin$/);await expect(page.getByRole("heading",{name:"Welcome back"})).toBeVisible();
   const response=await request.post("/api/admin/microsoft",{headers:{Origin:"http://127.0.0.1:3107"},data:{enabled:true}});expect(response.status()).toBe(403);
+  const account=await request.post("/api/admin/users/22222222-2222-4222-8222-222222222222",{headers:{Origin:"http://127.0.0.1:3107"},data:{action:"disconnect"}});expect(account.status()).toBe(401);
   for(const route of ["/admin/users","/admin/security","/admin/microsoft-settings"]){await page.goto(route);await expect(page).toHaveURL(/\/login\?next=\/admin$/);}
 });
 test("help and administrator login fit all supported widths",async({page},info)=>{

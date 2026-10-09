@@ -36,6 +36,7 @@ Developer UI tests use `npm run build:test-ui`. They are explicitly isolated fro
 - Run the two-user RLS checks in `supabase/README.md`: neither user may read or change the other's spreadsheets, templates, signatures, history, or Microsoft configurations.
 - Check environment-session tampering and password rotation (or role removal in provider mode), wrong-account access, CSRF rejection, login throttling, audit failure, and default-configuration ownership.
 - Confirm the signature-assets storage bucket policies and public asset exposure are intentional.
+- Apply `20261009_admin_controls.sql` after the existing admin migration and Storage policies. Test account search, protected-admin rejection, sender disconnection, and deletion on disposable staging accounts only. Verify Storage removal, cascading data deletion, old-JWT denial, and retry after an interrupted cleanup. See `admin-account-management.md`.
 
 ## Staging acceptance before rollout
 

@@ -29,6 +29,7 @@ You can also read your **Inbox, Sent, and Drafts** or **compose a single email**
 - **Track campaign results:** inspect saved message snapshots, failures, uncertain outcomes, and recipient exports.
 - **Use your mailbox:** read Inbox/Sent/Drafts, reply or forward, save drafts, and compose messages with To/Cc/Bcc and attachments.
 - **Manage the application:** configure the shared Microsoft registration in the admin portal; users can choose an allowed personal registration instead.
+- **Manage user accounts:** view workspace metrics, search accounts, inspect usage, disconnect saved senders, and permanently delete an account and its owned data with confirmation and resumable cleanup. Administrator actions are audited.
 - **Work comfortably:** responsive phone/tablet/desktop layouts, light/dark themes, keyboard navigation, and in-app help.
 
 ### Supported email accounts
@@ -149,6 +150,7 @@ For a new project, run these files in Supabase SQL Editor in order:
 3. [`supabase/seed_templates.sql`](supabase/seed_templates.sql)
 4. [`20261008_guided_workflow.sql`](supabase/migrations/20261008_guided_workflow.sql)
 5. [`20261008_admin_microsoft.sql`](supabase/migrations/20261008_admin_microsoft.sql)
+6. [`20261009_admin_controls.sql`](supabase/migrations/20261009_admin_controls.sql)
 
 Enable email/password authentication, configure the Site URL and `/auth/callback` redirect, and keep email confirmation enabled in production.
 
@@ -256,6 +258,7 @@ The screenshot helper binds only to `127.0.0.1:3107`, strips service credentials
 | [Templates and personalization](content/help/templates-and-personalization.md) | Templates, arbitrary fields, and sample previews |
 | [Mailbox user guide](content/help/mailbox.md) | Inbox, Sent, Drafts, Compose, and Microsoft permissions |
 | [Admin and Microsoft setup](docs/admin-microsoft-setup.md) | Environment-based admin login and shared/personal registrations |
+| [Account management](docs/admin-account-management.md) | User directory, protected account controls, deletion, and cleanup retries |
 | [Supabase setup](supabase/README.md) | SQL execution order, auth, storage, and two-user RLS checks |
 | [Release checklist](docs/release-checklist.md) | Deployment verification and operational limitations |
 | [UI design system](docs/ui-design-system.md) | Theme tokens, responsive layout, motion, and accessibility |

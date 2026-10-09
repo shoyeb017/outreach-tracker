@@ -20,6 +20,20 @@ describe("Markdown help documentation", () => {
     expect(within(sequence).getByRole("link", { name: /Next guideSending safety/ })).toHaveAttribute("href", "/help/safety");
     expect(within(sequence).queryByRole("link", { name: /My own app/ })).not.toBeInTheDocument();
   });
+  it("documents the optional administrator metadata reader and links its safety guidance", async () => {
+    const permissions = (await readHelpDocument("permissions"))!.markdown;
+    expect(permissions).toContain("**Administrator only · optional.**");
+    expect(permissions).toContain("Microsoft Graph → Application permissions");
+    expect(permissions).toContain("Grant admin consent");
+    for (const setting of ["MICROSOFT_READER_TENANT_ID", "MICROSOFT_READER_CLIENT_ID", "MICROSOFT_READER_CLIENT_SECRET", "MICROSOFT_READABLE_APP_IDS"]) {
+      expect(permissions).toContain(`\`${setting}\``);
+    }
+    expect(permissions).toContain("it does not narrow Microsoft's underlying permission grant");
+    expect(permissions).toContain("It does **not** grant mailbox reading or sending.");
+    render(<DocumentArticle document={(await readHelpDocument("safety"))!} />);
+    expect(screen.getByRole("heading", { name: "Administrator safety: Application.Read.All" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Application.Read.All setup and safety steps" })).toHaveAttribute("href", "/help/permissions#optional-administrator-metadata-reader");
+  });
   it("has complete, unique guides and stable section anchors", async () => {
     expect(new Set(helpDocuments.map((document) => document.slug)).size).toBe(helpDocuments.length);
     for (const metadata of helpDocuments) {

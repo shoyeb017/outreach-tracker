@@ -16,6 +16,8 @@ For the guided-workflow upgrade, back up your database and run `migrations/20261
 
 For administrator/Microsoft configuration support, then apply the missing `migrations/20261008_admin_microsoft.sql`. Its security-limit and audit tables are required even when the administrator signs in using environment credentials rather than a Supabase Auth account. See [administrator setup](../docs/admin-microsoft-setup.md).
 
+Next apply `migrations/20261009_admin_controls.sql` before deploying the account-management update. Storage policies must already be installed. This adds a service-only searchable Auth directory, audited sender disconnection, and resumable account deletion. Restrictive RLS policies freeze a deleting user's database and Storage access, including still-valid JWTs. Other users retain their existing ownership policies. See [account-management operations](../docs/admin-account-management.md) for deletion and staging checks.
+
 ## Auth configuration
 
 Enable Email/Password. For production, keep email confirmation enabled. Set:

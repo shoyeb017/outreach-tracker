@@ -51,7 +51,29 @@ A separately confirmed real test sends an actual email. HTTP 202 means Microsoft
 
 ## Optional administrator metadata reader
 
-Verified registration account-type detection uses a separate backend identity with `Application.Read.All` application permission and administrator consent, restricted to explicitly allowlisted registrations in its configured directory. It is not a mailbox permission, is not requested from ordinary users, and is not required for normal mailbox connection or sending.
+**Administrator only · optional.** `Application.Read.All` lets AUTMAIL's backend check a registration's **Supported account types**: work/school accounts, personal accounts, or both. AUTMAIL reads `signInAudience`; this does not test mailbox access or email delivery.
+
+If you see **“Account-type metadata is unavailable”**, this automatic check is not configured or cannot inspect the selected registration. It is not, by itself, a mailbox connection failure. For normal use, leave **Automatic sign-in** selected and connect your Microsoft account. You do not need to enable the reader just to remove this notice.
+
+### Set up automatic detection only if needed
+
+1. Have your Microsoft organization administrator create a separate backend reader app registration in the directory that owns the registrations you want to inspect. Being an AUTMAIL administrator does not automatically give Microsoft administrator rights.
+2. On that **reader registration**, open **Microsoft Entra → App registrations → API permissions → Add a permission → Microsoft Graph → Application permissions**. Add **`Application.Read.All`**. This backend reader uses **Application**, not Delegated, permissions; ordinary mailbox permissions remain delegated on the sending registration.
+3. An appropriately authorized Microsoft administrator must review the requested permissions and **Grant admin consent** for the organization. Adding the permission alone does not grant access.
+4. Configure these optional server-only settings in your hosting environment:
+
+   - `MICROSOFT_READER_TENANT_ID`: the reader's Directory (tenant) ID; it must match the directory owning the selected sending registration.
+   - `MICROSOFT_READER_CLIENT_ID`: the backend reader's Application (client) ID, not the sending app's ID.
+   - `MICROSOFT_READER_CLIENT_SECRET`: the backend reader's secret value. Never put it in browser settings, screenshots, Git, or a `NEXT_PUBLIC_` variable.
+   - `MICROSOFT_READABLE_APP_IDS`: a comma-separated allowlist of the sending registrations' Application (client) IDs that AUTMAIL may inspect.
+
+5. Restart the server or redeploy after configuring these values. In **Administration → Microsoft setup → Configuration diagnostics**, click **Refresh configuration**. Successful detection shows **Verified** and a successful verification time. Ordinary users do not need these server settings.
+
+### Security boundary
+
+`Application.Read.All` permits reading applications and service principals across the organization without a signed-in user. It does **not** grant mailbox reading or sending. AUTMAIL's allowlist limits its metadata queries; it does not narrow Microsoft's underlying permission grant. Review this broad permission under your organization's security policy and keep the reader separate from browser sign-in. See [Microsoft's permission definition](https://learn.microsoft.com/en-us/graph/permissions-reference#applicationreadall).
+
+Keep reader credentials private and rotate expiring secrets. Do not add `Application.ReadWrite.All`, `Directory.Read.All`, or application-wide mailbox permissions merely to resolve this notice. The reader cannot inspect unrelated tenants or registrations outside its allowlist. If your organization does not approve metadata reading, leave it disabled and use automatic sign-in; Microsoft still enforces the sending registration's actual supported accounts.
 
 ## Official references
 

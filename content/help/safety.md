@@ -44,6 +44,14 @@ Never share Microsoft access tokens, passwords, application database credentials
 
 Only import information needed for your outreach and follow your organization’s retention and contact policies. Use the application’s Privacy settings when you need to manage stored data.
 
+## Administrator safety: Application.Read.All
+
+**Optional administrator feature, not a requirement for sending email.** `Application.Read.All` is used by a separate backend reader to check which Microsoft account types an app registration supports. It is not an Inbox permission and does not let AUTMAIL send email on its own.
+
+This permission grants broad access to application and service-principal metadata across the Microsoft organization, so an authorized Microsoft administrator must review and approve it. AUTMAIL's configured app allowlist limits its own queries, not the underlying Microsoft permission. Never ask ordinary users to grant it as a workaround for a connection, consent, or sending error. See [Microsoft's permission definition](https://learn.microsoft.com/en-us/graph/permissions-reference#applicationreadall).
+
+The notice **“Account-type metadata is unavailable”** means the optional check is unavailable; it does not, by itself, block mailbox sign-in. You can leave **Automatic sign-in** selected. If an administrator needs verified detection, follow the [Application.Read.All setup and safety steps](/help/permissions#optional-administrator-metadata-reader). Keep reader secrets server-only and separate from the sending registration's delegated mail permissions.
+
 ## Recover in a controlled order
 
 1. Stop or pause the affected batch.

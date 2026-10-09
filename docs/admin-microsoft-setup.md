@@ -8,6 +8,8 @@ Apply the existing guided-workflow migration if not already installed, then appl
 
 New tables: `application_administrators`, `microsoft_default_configuration`, `microsoft_user_configurations`, `admin_audit_log`, `security_rate_limits`. New Microsoft integration fields associate the active registration, home-account identity, display name, authority, and account type. No tokens are stored.
 
+For the enriched dashboard and account-management tools, also apply `supabase/migrations/20261009_admin_controls.sql` after Storage policies are installed. Follow the [account-management guide](admin-account-management.md) for deletion safeguards, cleanup retries, and required staging verification.
+
 RLS permits users to read only their own custom configurations and their own administrator-role record. Configuration writes use authenticated server endpoints with explicit owner filters. Default settings, rate limits, and audit records have no browser access. The two service-role-only RPCs provide atomic rate limiting and a transactional default-settings save/audit/sender invalidation. Never grant those RPCs to `authenticated` or `anon`.
 
 Private owner-only deletion remains available for the existing privacy reset. Microsoft connection insert/update metadata is guarded on the database as well as the server. A version check and row locking reject stale connection writes after configuration edits or selection changes. Privacy reset also deletes the new personal configurations; it does not delete platform defaults or administrator audit history.

@@ -35,6 +35,16 @@ describe("role-aware public navigation", () => {
 });
 
 describe("landing page stays accessible", () => {
+  it("places the transparent navbar over the hero background without changing its actions", async () => {
+    const view = render(await HomePage());
+    const navigation = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(navigation).toHaveClass("landing-navigation");
+    expect(navigation.closest(".landing-hero")).toBe(view.container.querySelector(".landing-hero"));
+    expect(navigation.closest(".landing-hero")?.querySelector(".landing-hero-scrim")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Help & safety" })).toHaveAttribute("href", "/help");
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(screen.getByRole("button", { name: "Theme" })).toBeInTheDocument();
+  });
   it.each(["user", "administrator"])("renders for a signed-in %s instead of redirecting", async (role) => {
     if (role === "administrator") mocks.admin.mockResolvedValue({ email: "admin@example.com", local: false });
     else mocks.user.mockResolvedValue({ data: { user: { id: "user" } } });

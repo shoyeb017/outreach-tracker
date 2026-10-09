@@ -16,13 +16,13 @@ export default async function HomePage() {
   const microsoftClientIds = navigation.signedIn ? await getSignOutMicrosoftClientIds() : [];
   return <main className="landing-page min-h-screen">
     <LandingMotion />
-    <nav aria-label="Main navigation" className="landing-inner flex flex-wrap items-center justify-between gap-4 py-3">
-      <Link href="/" aria-label="AUTMAIL landing page" className="focus-ring"><BrandLogo /></Link>
-      <div className="flex flex-wrap items-center gap-2"><ButtonLink href="/help" variant="ghost">Help & safety</ButtonLink><ThemeToggle /><ButtonLink href={navigation.destination} variant="outline">{navigation.label}</ButtonLink>{navigation.signedIn && <LandingSignOut microsoftClientIds={microsoftClientIds} />}</div>
-    </nav>
     <section className="landing-hero" aria-labelledby="landing-title">
       <BlueTubesBackground />
       <div className="landing-hero-scrim" aria-hidden="true" />
+      <nav aria-label="Main navigation" className="landing-navigation landing-inner flex flex-wrap items-center justify-between gap-4 py-3">
+        <Link href="/" aria-label="AUTMAIL landing page" className="focus-ring"><BrandLogo /></Link>
+        <div className="flex flex-wrap items-center gap-2"><ButtonLink href="/help" variant="ghost">Help & safety</ButtonLink><ThemeToggle /><ButtonLink href={navigation.destination} variant="outline">{navigation.label}</ButtonLink>{navigation.signedIn && <LandingSignOut microsoftClientIds={microsoftClientIds} />}</div>
+      </nav>
       <div className="landing-inner landing-hero-content grid gap-10 lg:grid-cols-[1.2fr_1fr] lg:items-center">
         <div className="min-w-0">
           <p className="inline-flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-xs font-semibold text-[var(--primary)]"><Mail size={16} /> Microsoft email automation</p>

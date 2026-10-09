@@ -9,7 +9,7 @@ export function BlueTubesBackground() {
   const [status, setStatus] = useState<"loading" | "running" | "reduced" | "fallback">("loading");
   useEffect(() => {
     const element = canvas.current;
-    const container = element?.closest<HTMLElement>(".landing-hero");
+    const container = element?.closest<HTMLElement>(".landing-hero, [data-tubes-background]");
     if (!element || !container) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let cancelled = false;
