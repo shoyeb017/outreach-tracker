@@ -8,7 +8,7 @@ Creation uses one five-step navigation: **Upload → Email setup → Choose temp
 
 1. On Dashboard, choose **Upload spreadsheet**. Open the quick guide and download the fictional sample Excel file.
 2. Upload it. Choose **Public Email** as the recipient address column. Explain that this is where the email goes, not text inside the message.
-3. Choose **One email for everyone**, or use **Industry** for different messages. Review the choices. If nothing matches exactly, choose a message or skip those recipients.
+3. Choose **One template for everyone**, or **Different templates by spreadsheet value** using **Industry**. For each group, skip the recipients, choose a template, or use a shared default. Choosing Use default template requires a default template before continuing.
 4. Connect **company_name** to **Business Name**. Say: “The email says Hi company name. Your spreadsheet supplies Northstar Labs, so that is what the recipient sees.” Connect any other fields used by the chosen email.
 5. Choose **Save and select recipients**. Nothing has been sent. Select the recipients and explain the difference between **this page** and **all matching**.
 6. Choose **Review and send**. Open a row to show the finished email. Point out From, To, email template, missing details, duplicate policy, and practice mode.
