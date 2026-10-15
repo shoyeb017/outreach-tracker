@@ -2,7 +2,7 @@ type Environment = Record<string, string | undefined>;
 
 export function validateProductionEnvironment(environment: Environment) {
   if (environment.NEXT_PUBLIC_AUTMAIL_UI_TEST_MODE === "true") {
-    if (environment.VERCEL || environment.NEXT_PUBLIC_SUPABASE_URL || environment.NEXT_PUBLIC_SUPABASE_ANON_KEY || environment.SUPABASE_SERVICE_ROLE_KEY || environment.ADMIN_LOGIN_EMAIL || environment.ADMIN_LOGIN_PASSWORD) {
+    if (environment.VERCEL || environment.NEXT_PUBLIC_SUPABASE_URL || environment.NEXT_PUBLIC_SUPABASE_ANON_KEY || environment.SUPABASE_SERVICE_ROLE_KEY || environment.ADMIN_LOGIN_EMAIL || environment.ADMIN_LOGIN_PASSWORD || environment.SCHEDULE_ENCRYPTION_KEY || environment.MICROSOFT_SCHEDULER_CLIENT_SECRET || environment.SCHEDULE_WORKER_SECRET) {
       throw new Error("UI-test builds cannot use deployment settings or real service credentials. Use the normal build command for deployment.");
     }
     if (environment.NEXT_PUBLIC_APP_URL !== "http://127.0.0.1:3107") throw new Error("UI-test builds are restricted to the isolated browser-test origin.");
@@ -31,4 +31,7 @@ export function validateProductionEnvironment(environment: Environment) {
   if (publicKey === environment.SUPABASE_SERVICE_ROLE_KEY || publicKey.startsWith("sb_secret_") || serviceRoleToken) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY must be a public anon/publishable key, never a service-role or secret key.");
   if (environment.ADMIN_LOGIN_EMAIL && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(environment.ADMIN_LOGIN_EMAIL.trim())) throw new Error("ADMIN_LOGIN_EMAIL must be a valid administrator email address.");
   if (environment.ADMIN_LOGIN_PASSWORD && (!environment.ADMIN_LOGIN_EMAIL?.trim() || environment.ADMIN_LOGIN_PASSWORD.length > 256)) throw new Error("ADMIN_LOGIN_PASSWORD requires ADMIN_LOGIN_EMAIL and must not exceed 256 characters.");
+  if (environment.SCHEDULE_ENCRYPTION_KEY && (!/^[A-Za-z0-9+/]{43}=$/.test(environment.SCHEDULE_ENCRYPTION_KEY) || Buffer.from(environment.SCHEDULE_ENCRYPTION_KEY, "base64").length !== 32)) throw new Error("SCHEDULE_ENCRYPTION_KEY must be a 32-byte base64 key. Generate it using scripts/generate-scheduler-secrets.mjs.");
+  if (environment.MICROSOFT_SCHEDULER_CLIENT_ID && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(environment.MICROSOFT_SCHEDULER_CLIENT_ID)) throw new Error("MICROSOFT_SCHEDULER_CLIENT_ID must be the default registration's Client ID.");
+  if (environment.MICROSOFT_SCHEDULER_CLIENT_SECRET && !environment.MICROSOFT_SCHEDULER_CLIENT_ID) throw new Error("MICROSOFT_SCHEDULER_CLIENT_SECRET requires MICROSOFT_SCHEDULER_CLIENT_ID.");
 }

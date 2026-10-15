@@ -20,6 +20,10 @@ Next apply `migrations/20261009_admin_controls.sql` before deploying the account
 
 ## Auth configuration
 
+For scheduled sending, apply `migrations/20261015_scheduled_mail.sql` **after** the account-controls migration. This migration starts globally paused and does not activate Cron. Follow [scheduled-mail setup](../docs/scheduled-mail-setup.md) for Microsoft Web authorization, encryption, Edge Function deployment, Vault, and the separate optional `schedule-worker-cron.sql` activation. Never put worker or refresh-token credentials in a browser-readable table. No separate backend host is needed.
+
+Then apply `migrations/20261016_scheduled_test_mail.sql` for manual-recipient scheduled dummy emails. It keeps tests in the same queue/history with explicit test provenance, rather than creating fake spreadsheets/templates. Existing worker safety checks remain in place; test creation is service-only, capped at five per user per UTC day, and requires real-sending/background authorization. It does not create another Cron job or send mail during migration.
+
 Enable Email/Password. For production, keep email confirmation enabled. Set:
 
 - Local Site URL: `http://localhost:3000`

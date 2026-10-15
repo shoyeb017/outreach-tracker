@@ -9,9 +9,10 @@ Production website: [https://autmail.vercel.app](https://autmail.vercel.app).
 | Application origin | `https://autmail.vercel.app` | Vercel environment: `NEXT_PUBLIC_APP_URL` |
 | Supabase default authentication destination | `https://autmail.vercel.app` | Supabase Authentication → URL Configuration → Site URL |
 | Microsoft mailbox sign-in return address | `https://autmail.vercel.app/settings` | Entra app registration → Authentication → Single-page application |
+| Optional background scheduled sending | `https://autmail.vercel.app/api/microsoft/background/callback` | Entra app registration → Authentication → Web |
 | Supabase authentication callback | `https://autmail.vercel.app/auth/callback` | Supabase Authentication → URL Configuration → Redirect URLs |
 
-The two redirects serve different login flows. Do not exchange them or put a path in `NEXT_PUBLIC_APP_URL`.
+These redirects serve different login flows. Do not exchange them or put a path in `NEXT_PUBLIC_APP_URL`. The background Web callback requires the separate [scheduled-mail setup](scheduled-mail-setup.md); adding a redirect alone does not enable scheduled sending.
 
 ## 1. Vercel
 

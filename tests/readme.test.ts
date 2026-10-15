@@ -9,7 +9,8 @@ describe("repository introduction and local documentation assets", () => {
   it("uses one product title and introduces both campaigns and the mailbox", () => {
     expect(readme.match(/^# /gm)).toHaveLength(1);
     for (const section of ["## What you can do", "## How it works", "## Product tour", "## Get started", "## Microsoft connection", "## Deployment", "## Documentation"]) expect(readme).toContain(section);
-    expect(readme).toContain("Inbox, Sent, and Drafts");
+    expect(readme).toContain("Inbox, Sent, Drafts, and Junk email");
+    expect(readme).toContain("docs/scheduled-mail-setup.md");
     expect(readme).toContain("No hash script or separate admin signup is needed");
   });
   it("keeps all embedded images inside styles and supports both GitHub themes", () => {

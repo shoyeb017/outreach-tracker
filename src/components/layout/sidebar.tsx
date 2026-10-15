@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clock3, Database, LayoutDashboard, Mail, Settings, CircleHelp, Inbox, SquarePen } from "lucide-react";
+import { Clock3, Database, LayoutDashboard, Mail, Settings, CircleHelp, Inbox, SquarePen, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/brand-logo";
 
@@ -12,6 +12,7 @@ const items = [
   { href: "/compose", label: "Compose email", icon: SquarePen },
   { href: "/datasets", label: "Spreadsheets", icon: Database },
   { href: "/templates", label: "Email templates", icon: Mail },
+  { href: "/scheduled", label: "Scheduled emails", icon: CalendarClock },
   { href: "/history", label: "Send history", icon: Clock3 },
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/help", label: "Help & safety", icon: CircleHelp },

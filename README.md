@@ -27,6 +27,7 @@ You can also read your **Inbox, Sent, Drafts, and Junk email** or **compose a si
 - **Create a flexible signature:** add and reorder text, links, and logos with adjustable image sizes.
 - **Review before sending:** select recipients and inspect the actual From, To, subject, message, and missing values.
 - **Track campaign results:** inspect saved message snapshots, failures, uncertain outcomes, and recipient exports.
+- **Schedule for later:** confirm a start time, then manage upcoming sends, results, pauses, and cancellations in **Scheduled emails**. Requires the documented Supabase worker and background Microsoft authorization setup.
 - **Use your mailbox:** read Inbox/Sent/Drafts/Junk email, reply or forward, save drafts, and compose messages with To/Cc/Bcc and attachments.
 - **Manage the application:** configure the shared Microsoft registration in the admin portal; users can choose an allowed personal registration instead.
 - **Manage user accounts:** view workspace metrics, search accounts, inspect usage, disconnect saved senders, and permanently delete an account and its owned data with confirmation and resumable cleanup. Administrator actions are audited.
@@ -68,6 +69,8 @@ These are three separate choices: the **email column** decides who receives the 
 Practice mode sends **no campaign email** and needs no Microsoft connection. Connect your mailbox in Settings and enable real campaign sending only when ready.
 
 Manual Compose messages and the explicitly confirmed **Send real test email** action are separate from campaign practice mode. They can send real email after their own review and confirmation.
+
+**Scheduled emails → Schedule a test email** checks the background sender using a fixed dummy message and a manually entered recipient/time, with no spreadsheet. Scheduled tests require Real sending on and background access; results appear in Scheduled emails and history, clearly marked as tests. Five new tests per user per UTC day; normal worker limits still apply.
 
 ## Product tour
 
@@ -126,7 +129,7 @@ npm ci
 
 ### 2. Configure environment values
 
-Copy [`.env.example`](.env.example) to an uncommitted `.env.local` and fill in its six values:
+Copy [`.env.example`](.env.example) to an uncommitted `.env.local`. Fill in the six core values; the last three are optional until you enable scheduled sending:
 
 | Variable | Purpose |
 | --- | --- |
@@ -136,6 +139,9 @@ Copy [`.env.example`](.env.example) to an uncommitted `.env.local` and fill in i
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only key for protected configuration, security limits, and audit records |
 | `ADMIN_LOGIN_EMAIL` | Administrator email used on the shared sign-in page |
 | `ADMIN_LOGIN_PASSWORD` | Server-only administrator password; use a long, unique password |
+| `SCHEDULE_ENCRYPTION_KEY` | Optional scheduled sending: generated encryption key, identical in Vercel and Supabase worker secrets |
+| `MICROSOFT_SCHEDULER_CLIENT_ID` | Optional scheduled sending: default Microsoft registration's Client ID |
+| `MICROSOFT_SCHEDULER_CLIENT_SECRET` | Optional scheduled sending: server-only client-secret Value for that default registration |
 
 Normal users sign in through Supabase. The configured administrator uses the **same sign-in page** with the environment email/password and enters the admin portal. No hash script or separate admin signup is needed.
 
@@ -151,6 +157,8 @@ For a new project, run these files in Supabase SQL Editor in order:
 4. [`20261008_guided_workflow.sql`](supabase/migrations/20261008_guided_workflow.sql)
 5. [`20261008_admin_microsoft.sql`](supabase/migrations/20261008_admin_microsoft.sql)
 6. [`20261009_admin_controls.sql`](supabase/migrations/20261009_admin_controls.sql)
+7. [`20261015_scheduled_mail.sql`](supabase/migrations/20261015_scheduled_mail.sql)
+8. [`20261016_scheduled_test_mail.sql`](supabase/migrations/20261016_scheduled_test_mail.sql)
 
 Enable email/password authentication, configure the Site URL and `/auth/callback` redirect, and keep email confirmation enabled in production.
 
@@ -187,12 +195,12 @@ See [Microsoft setup](content/help/microsoft-setup.md), [permissions and admin a
 
 ## Safety and current limits
 
-- **Campaign queues run in your browser:** keep the tab open. This is not a background worker, scheduler, or closed-tab sending service.
+- **Send now queues run in your browser:** keep the tab open. **Schedule for later** uses a separate Supabase worker after its one-time administrator setup. See [scheduled sending setup](docs/scheduled-mail-setup.md); Supabase Free limits and approximate timing apply.
 - **Duplicate protection:** the same normalized recipient address plus template is a campaign duplicate. Blocking is the default; Warn/Allow are deliberate alternatives. The Do not email list blocks normal sends.
 - **Uncertain outcomes are not retried automatically:** interruptions can occur after Microsoft accepts a message. Check Sent Items before deciding to retry. Explicit throttling responses use bounded retries.
 - **Microsoft acceptance is not delivery confirmation:** a successful API response does not prove arrival in the recipient inbox.
 - **Campaign history and mailbox folders are different:** campaign history saves outreach snapshots/results; Inbox/Sent/Drafts/Junk email reflect the connected Microsoft mailbox.
-- **Mailbox scope is limited:** search applies to loaded messages; drafts save explicitly, not automatically. Delete/archive, scheduled send, notifications, and Gmail integration are not implemented.
+- **Mailbox scope is limited:** search applies to loaded messages; drafts save explicitly, not automatically. Delete/archive, personal Compose scheduling, notifications, and Gmail integration are not implemented. Spreadsheet scheduling is available separately in **Scheduled emails**.
 - **Attachments have limits:** new Compose messages allow up to ten files and 2 MB total. Existing-draft attachments are managed through Outlook. Explicit downloads are capped at 10 MB.
 - **Data and credentials:** user-owned records use Supabase RLS; original spreadsheets are private. Uploaded signature assets are public so email clients can display them. Microsoft tokens stay in MSAL session storage, not Supabase; mailbox content is not persisted there.
 - **History display:** the view loads the latest 1,000 campaign records. Duplicate checks use complete successful history independently.
@@ -209,13 +217,14 @@ The production website is [autmail.vercel.app](https://autmail.vercel.app). Keep
 | --- | --- |
 | Vercel `NEXT_PUBLIC_APP_URL` and Supabase Site URL | `https://autmail.vercel.app` |
 | Microsoft Entra SPA redirect | `https://autmail.vercel.app/settings` |
+| Microsoft Entra Web redirect for optional scheduled sending | `https://autmail.vercel.app/api/microsoft/background/callback` |
 | Supabase authentication redirect | `https://autmail.vercel.app/auth/callback` |
 
 Follow the [production domain setup manual](docs/deployment.md) for exact provider settings, confirmation/reset redirects, and domain-change checks. Editing repository documentation does not update the hosted provider settings.
 
 1. Apply and verify the required SQL migrations and storage policies.
 2. Import the GitHub repository into Vercel.
-3. Set the six environment values from `.env.example`, including `NEXT_PUBLIC_APP_URL=https://autmail.vercel.app` for production.
+3. Set the six core environment values from `.env.example`, including `NEXT_PUBLIC_APP_URL=https://autmail.vercel.app` for production. Optional scheduled sending needs the three additional server values and [worker setup](docs/scheduled-mail-setup.md).
 4. Configure the Supabase and Microsoft redirect URLs listed above.
 5. Use the normal `npm run build` command, then complete the [release checklist](docs/release-checklist.md).
 
@@ -223,7 +232,7 @@ Deploying code does **not** apply Supabase migrations. Build success alone does 
 
 ## Development and verification
 
-The stack is **Next.js App Router, React, TypeScript, Tailwind CSS, Supabase, TipTap, SheetJS, MSAL, and Microsoft Graph**. Campaigns use a persisted browser queue. Mailbox features use delegated Graph `/me` endpoints. Help pages are sourced from Markdown in `content/help`.
+The stack is **Next.js App Router, React, TypeScript, Tailwind CSS, Supabase, TipTap, SheetJS, MSAL, and Microsoft Graph**. Send now uses a persisted browser queue; Schedule for later uses Supabase Cron and an Edge Function. Mailbox features use delegated Graph `/me` endpoints. Help pages are sourced from Markdown in `content/help`. See [scheduled-mail deployment and safety](docs/scheduled-mail-setup.md).
 
 Run ordinary checks sequentially:
 

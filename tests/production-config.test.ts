@@ -42,12 +42,18 @@ describe("production configuration", () => {
   it("keeps .env.example credential-free with only deployment essentials", () => {
     const example = readFileSync(".env.example", "utf8");
     const settings = example.split(/\r?\n/).filter((line) => line && !line.startsWith("#"));
-    expect(settings).toEqual(["NEXT_PUBLIC_SUPABASE_URL=", "NEXT_PUBLIC_SUPABASE_ANON_KEY=", "NEXT_PUBLIC_APP_URL=", "SUPABASE_SERVICE_ROLE_KEY=", "ADMIN_LOGIN_EMAIL=", "ADMIN_LOGIN_PASSWORD="]);
+    expect(settings).toEqual(["NEXT_PUBLIC_SUPABASE_URL=", "NEXT_PUBLIC_SUPABASE_ANON_KEY=", "NEXT_PUBLIC_APP_URL=", "SUPABASE_SERVICE_ROLE_KEY=", "ADMIN_LOGIN_EMAIL=", "ADMIN_LOGIN_PASSWORD=", "SCHEDULE_ENCRYPTION_KEY=", "MICROSOFT_SCHEDULER_CLIENT_ID=", "MICROSOFT_SCHEDULER_CLIENT_SECRET="]);
     expect(example).not.toMatch(/ADMIN_DEV_PASSWORD_HASH|ADMIN_LOCAL_SESSION_SECRET|ADMIN_ENABLE_LOCAL_LOGIN|AUTMAIL_UI_TEST_MODE|localhost/);
   });
   it("supports environment admin passwords without a hash script or extra minimum length", () => {
     expect(() => validateProductionEnvironment({ ...production, ADMIN_LOGIN_PASSWORD: "test" })).not.toThrow();
     expect(() => validateProductionEnvironment({ ...production, ADMIN_LOGIN_EMAIL: "", ADMIN_LOGIN_PASSWORD: "test" })).toThrow("ADMIN_LOGIN_EMAIL");
     expect(() => validateProductionEnvironment({ ...production, ADMIN_LOGIN_PASSWORD: "x".repeat(257) })).toThrow("256");
+  });
+  it("validates optional scheduler encryption and keeps background credentials out of UI-test builds", () => {
+    expect(() => validateProductionEnvironment({ ...production, SCHEDULE_ENCRYPTION_KEY: "short" })).toThrow("32-byte");
+    expect(() => validateProductionEnvironment({ ...production, SCHEDULE_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString("base64") })).not.toThrow();
+    expect(() => validateProductionEnvironment({ ...production, MICROSOFT_SCHEDULER_CLIENT_SECRET: "fixture" })).toThrow("MICROSOFT_SCHEDULER_CLIENT_ID");
+    expect(() => validateProductionEnvironment({ NEXT_PUBLIC_AUTMAIL_UI_TEST_MODE: "true", NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3107", SCHEDULE_ENCRYPTION_KEY: "fixture" })).toThrow("UI-test");
   });
 });

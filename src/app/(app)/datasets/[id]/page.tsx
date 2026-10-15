@@ -47,7 +47,7 @@ export default async function DatasetPage({ params, searchParams }: { params: Pr
         preferences={preferencesResult.data ?? {}}
         suppressions={(suppressionsResult.data ?? []).map((item) => item.email_normalized)}
         history={historyResult.data ?? []}
-        unfinishedRuns={(runsResult.data ?? []) as never}
+        unfinishedRuns={(runsResult.data ?? []).filter((run) => !run.scheduled_batch_id) as never}
         initialTab={query.tab}
       />
     </main>

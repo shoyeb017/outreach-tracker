@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { HistoryTable } from "@/components/history/history-table";
+import { HistoryTable, type HistoryRow } from "@/components/history/history-table";
 import { createHistoryPreview } from "@/lib/ui-preview/history";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -8,6 +8,16 @@ vi.mock("@/components/ui/dialog", () => ({ Dialog: ({ title, children }: { title
 afterEach(cleanup);
 
 describe("readable history", () => {
+  it("shows standalone scheduled tests without broken spreadsheet links or resend actions", () => {
+    const rows: HistoryRow[]=[{ ...createHistoryPreview()[0], dataset_id:null, dataset_row_id:null, datasets:null, templates:null, is_test:true }];
+    render(<HistoryTable rows={rows} />);
+    expect(screen.getAllByRole("link",{name:"Scheduled test email · no spreadsheet"})[0]).toHaveAttribute("href","/scheduled");
+    expect(screen.getByRole("option",{name:"Scheduled tests"})).toHaveValue("scheduled-tests");
+    fireEvent.click(screen.getByRole("button",{name:"View full email to international.partnerships.and.operations@example.com"}));
+    const dialog=screen.getByRole("dialog"); expect(within(dialog).queryByRole("button",{name:"Resend with review"})).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("link",{name:"View scheduled email results"})).toHaveAttribute("href","/scheduled");
+    expect(within(dialog).getByText("Fixed test message")).toBeInTheDocument();
+  });
   it("groups details into five columns without truncating recipient, subject, or source", () => {
     render(<HistoryTable rows={createHistoryPreview()} />);
     const table = screen.getByRole("table");

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Clock3, Database, LayoutDashboard, LogOut, Mail, Menu, PlugZap, Settings, CircleHelp, Home, Inbox, SquarePen } from "lucide-react";
+import { ArrowLeft, Clock3, Database, LayoutDashboard, LogOut, Mail, Menu, PlugZap, Settings, CircleHelp, Home, Inbox, SquarePen, CalendarClock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { signOutOfApplication } from "@/lib/auth/sign-out";
 
 const mobileItems = [
   ["/inbox", "Inbox", Inbox], ["/compose", "Compose email", SquarePen],
-  ["/dashboard", "Dashboard", LayoutDashboard], ["/datasets", "Spreadsheets", Database], ["/templates", "Email templates", Mail], ["/history", "Send history", Clock3], ["/settings", "Settings", Settings],
+  ["/dashboard", "Dashboard", LayoutDashboard], ["/datasets", "Spreadsheets", Database], ["/templates", "Email templates", Mail], ["/scheduled", "Scheduled emails", CalendarClock], ["/history", "Send history", Clock3], ["/settings", "Settings", Settings],
   ["/help", "Help & safety", CircleHelp], ["/", "Landing page", Home],
 ] as const;
 

@@ -11,7 +11,7 @@ AUTMAIL accesses the Microsoft mailbox you connect, using **delegated permission
 
 `Mail.ReadWrite` includes reading, but does not include sending. `Mail.ReadBasic` does not allow reading the full message body. AUTMAIL uses `Mail.Read` for that reason. Existing campaign permissions remain unchanged.
 
-MSAL may also add the OAuth `offline_access` scope for session renewal. This is not permission to read or send mail. Access and refresh tokens are not saved in the AUTMAIL database. Never share tokens, passwords, or client secrets.
+MSAL may also add the OAuth `offline_access` scope for browser session renewal. This is not permission to read or send mail. Browser-session tokens are not saved in the AUTMAIL database. If you separately enable **background access for Scheduled emails**, AUTMAIL stores the refresh token and app credential encrypted in service-role-only tables so its worker can send while your browser is closed. This uses a separate Web callback, not the SPA session. Never share tokens, passwords, or client secrets. See [Scheduled emails setup and safety](/help/scheduled-emails).
 
 ## Why does my own inbox ask for administrator approval?
 

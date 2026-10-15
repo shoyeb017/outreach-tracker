@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test",
+    "test:browser:scheduling": "playwright test --config tests/visual/scheduling/playwright.config.ts"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.25.0",
@@ -44,6 +45,7 @@
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.1.13",
     "@testing-library/jest-dom": "^6.8.0",

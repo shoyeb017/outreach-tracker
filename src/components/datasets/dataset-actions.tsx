@@ -71,7 +71,7 @@ export function DatasetActions({ datasetId, datasetName, originalFilePath }: { d
   }
   async function deleteOriginal() { const supabase = getSupabaseBrowserClient(); const { data, error } = await supabase.from("datasets").select("original_file_path").eq("id", datasetId).single(); if (error) return toast.error(error.message); if (!data.original_file_path) return toast.info("No original file is retained for this dataset."); if (!window.confirm("Delete the retained source spreadsheet? Imported rows will remain.")) return; const { error: storageError } = await supabase.storage.from("imports").remove([data.original_file_path]); if (storageError) return toast.error(storageError.message); const { error: updateError } = await supabase.from("datasets").update({ original_file_path: null }).eq("id", datasetId); if (updateError) toast.error(updateError.message); else toast.success("Original file deleted. Imported rows were kept."); }
   async function remove() {
-    if (!window.confirm(`Delete "${datasetName}" and its rows, routing rules, and send history? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${datasetName}" and its rows, routing rules, schedules, and send history? Pending scheduled emails will stop; an email already handed to Microsoft may still complete. This cannot be undone.`)) return;
     const supabase = getSupabaseBrowserClient();
     const { data: dataset } = originalFilePath ? { data: null } : await supabase.from("datasets").select("original_file_path").eq("id", datasetId).maybeSingle();
     const retainedPath = originalFilePath || dataset?.original_file_path;

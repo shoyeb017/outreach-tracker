@@ -1,0 +1,5 @@
+# This endpoint verifies its own high-entropy worker secret. Never expose it to browsers.
+project_id = "autmail"
+
+[functions.scheduled-mail-worker]
+verify_jwt = false

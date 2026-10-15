@@ -46,6 +46,8 @@ Microsoft HTTP 202 means acceptance, not guaranteed delivery. If a network timeo
 
 This is a focused Microsoft mailbox workspace, not a complete replacement for Outlook or Gmail. Gmail sign-in, folder management, deletion, archive, rules, scheduled sending, large-file uploads, and automatic synchronization are not included. Continue using Outlook for those operations.
 
+**Spreadsheet campaigns** have a separate **Schedule for later** feature, with upcoming sends and results under **Scheduled emails**. It does not schedule personal Compose messages. See [Scheduled emails setup and safety](/help/scheduled-emails).
+
 ## Official references
 
 - [Read Microsoft messages](https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0)

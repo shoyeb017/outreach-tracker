@@ -14,6 +14,10 @@ Creation uses one five-step navigation: **Upload → Email setup → Choose temp
 6. Choose **Review and send**. Open a row to show the finished email. Point out From, To, email template, missing details, duplicate policy, and practice mode.
 7. Confirm **Practice**. No real email is sent. Keep the browser tab open until results appear, then show the saved message in **Send history**.
 
+## Scheduling a batch for later
+
+For later sending, first enable background Microsoft access in **Scheduled emails** after the administrator completes its setup. In a spreadsheet's Review & send step, select **Schedule for later**, preview the ready emails, choose the start time in the displayed timezone, and confirm. **Upcoming / Needs attention / History** show future work and results. Practice stays practice; real sending needs explicit authorization. Explain that Free-plan times are approximate and a long delay pauses for review. See [the full setup and safety guide](scheduled-mail-setup.md).
+
 ## Choosing and editing email templates
 
 Open **Template library** to search by name, industry, or subject. **Ready-made templates** are starting points: preview one, then choose **Make a copy** to customize it. **My templates** shows your own messages. Archived messages are hidden until you choose **Archived**; copy, archive, restore, and delete are under **More options**.

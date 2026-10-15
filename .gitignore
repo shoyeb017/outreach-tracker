@@ -10,5 +10,6 @@ test-results
 playwright-report
 /.codex/
 /.agents/
+/supabase/.temp/
 .DS_Store
 Thumbs.db

@@ -1,6 +1,6 @@
 Review protects against preventable mistakes. It cannot guarantee delivery or replace your organization’s permission and outreach policies.
 
-Keep the browser tab open while a batch runs. This is not a background or scheduled sending service; leaving the page pauses processing after in-flight work.
+Keep the browser tab open while a **Send now** batch runs; leaving the page pauses browser processing after in-flight work. For closed-browser sending, use the separately confirmed **Schedule for later** feature after its administrator setup. See [Scheduled emails](/help/scheduled-emails).
 
 ## Start with practice mode
 

@@ -21,7 +21,7 @@ Folder tabs map to Microsoft's locale-independent well-known names: Inbox → `i
 - Native reply/reply-all/forward endpoints create drafts on an explicit action. The From mailbox is verified against Graph immediately before sending. Send failures with uncertain outcomes never automatically retry.
 - Attachments on new emails have a 2 MB total cap and ten-file limit, below simple JSON payload limits. Existing draft attachments are preserved and managed through Outlook; uploads are disabled on those drafts. Downloads are explicit, capped at 10 MB, and use object URLs revoked after download.
 - New drafts wrap editor, signature, and quote in independent markers. If Microsoft removes the markers or the draft originated externally, preserve its original body as a protected section rather than round-tripping rich Outlook content through a simpler editor.
-- Drafts save explicitly, not automatically. Search applies only to loaded messages. No delete/archive, bulk actions, inbox notification subscriptions, Gmail provider, or scheduled send implementation.
+- Drafts save explicitly, not automatically. Search applies only to loaded messages. No delete/archive, bulk actions, inbox notification subscriptions, Gmail provider, or scheduling for personal Compose messages. Spreadsheet scheduling is a separate workflow; see `docs/scheduled-mail-setup.md`.
 
 ## Verification
 
