@@ -98,6 +98,8 @@ Do not test RLS from SQL Editor while using the project-owner role: that role by
 
 Every industry template includes both HTML and plain-text content, greets `{{company_name}}`, and renders the optional dynamic signature through `{{signature}}`.
 
+To add the 15 business-type templates, run `migrations/20261016_business_outreach_templates.sql` after the baseline template table exists. Existing installations only need this new file for the template expansion, not a rerun of the industry seed. It preserves the original 24 ready-made templates and personal copies, and updates its own stable system-template keys on rerun without duplicate rows. A fresh installation then has 39 built-in templates. Categories match business types such as `Marketing agency` and `Landscaping company`, independent of city. See [business-template setup](../docs/business-outreach-templates.md) for all names and routing instructions.
+
 ## Vercel variables
 
 Use the values in [`.env.example`](../.env.example). Only the first three are public; the remaining values must stay on the server:

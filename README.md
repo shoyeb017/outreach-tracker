@@ -159,6 +159,7 @@ For a new project, run these files in Supabase SQL Editor in order:
 6. [`20261009_admin_controls.sql`](supabase/migrations/20261009_admin_controls.sql)
 7. [`20261015_scheduled_mail.sql`](supabase/migrations/20261015_scheduled_mail.sql)
 8. [`20261016_scheduled_test_mail.sql`](supabase/migrations/20261016_scheduled_test_mail.sql)
+9. [`20261016_business_outreach_templates.sql`](supabase/migrations/20261016_business_outreach_templates.sql) — adds 15 location-independent business templates; see [template setup](docs/business-outreach-templates.md).
 
 Enable email/password authentication, configure the Site URL and `/auth/callback` redirect, and keep email confirmation enabled in production.
 
