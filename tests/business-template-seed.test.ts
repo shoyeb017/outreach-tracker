@@ -56,12 +56,13 @@ describe("15 location-independent business outreach templates",()=>{
     }
     expect(new Set(templates.map(row=>row.html_body)).size).toBe(15);
   });
-  it("supports exact business-type routing without making the existing broad industry matches ambiguous",async()=>{
+  it("recognizes business types in location text without making existing broad industry matches ambiguous",async()=>{
     const all=(await db.query<EmailTemplate>("select * from public.templates")).rows;
     for(const category of categories) expect(suggestTemplate(`  ${category.toUpperCase()}  `,all)?.name).toBe(`${category} Outreach`);
     expect(suggestTemplate("Marketing & Advertising",all)?.name).toBe("Marketing & Advertising Outreach");
     expect(suggestTemplate("Technology & Software",all)?.name).toBe("Technology & Software Outreach");
-    expect(suggestTemplate("Marketing agency Arlington, Virginia",all)).toBeNull();
+    for(const category of categories) for(const city of ["Arlington","Alexandria","Fairfax","Reston","Ashburn","Richmond","Virginia Beach"]) expect(suggestTemplate(`${category} ${city}, Virginia`,all)?.name).toBe(`${category} Outreach`);
+    expect(suggestTemplate("Accounting firm Arlington, Virginia, Business consulting Arlington",all)?.name).toBe("Accounting firm Outreach");
   });
   it("can be rerun with stable IDs, no duplicates, and no changes to personal copies",async()=>{
     const owner="11111111-1111-4111-8111-111111111111";

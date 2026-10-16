@@ -1,4 +1,5 @@
-import type { EmailTemplate, RoutingRule } from "@/types";
+import type { RoutingRule } from "@/types";
+export { suggestTemplate, suggestTemplateMatch } from "./suggestions";
 
 export function normalizeRoutingValue(value: unknown): string {
   return String(value ?? "").normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase();
@@ -26,16 +27,6 @@ export function groupRoutingValues(values: { routing_value: string; row_count: n
     }
   }
   return Array.from(groups.values());
-}
-
-export function suggestTemplate(value: unknown, templates: Pick<EmailTemplate, "id" | "name" | "category" | "is_active" | "is_archived">[]) {
-  const normalized = normalizeRoutingValue(value);
-  if (!normalized) return null;
-  const candidates = templates.filter((template) => template.is_active && !template.is_archived);
-  const categories = candidates.filter((template) => normalizeRoutingValue(template.category) === normalized);
-  if (categories.length) return categories.length === 1 ? categories[0] : null;
-  const names = candidates.filter((template) => normalizeRoutingValue(template.name) === normalized);
-  return names.length === 1 ? names[0] : null;
 }
 
 export function resolveTemplateForRow(args: {

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { groupRoutingValues, suggestTemplate } from "@/lib/templates/routing";
+import { groupRoutingValues, suggestTemplateMatch } from "@/lib/templates/routing";
 import type { Dataset, DatasetColumn, EmailTemplate, RoutingRule } from "@/types";
 
 type RuleDraft = { action: RoutingRule["action"]; templateId: string };
@@ -32,6 +32,7 @@ export function RoutingPanel({ dataset, columns, templates, initialRules, routin
 }) {
   const router = useRouter();
   const groupedValues = useMemo(() => groupRoutingValues(routingValues), [routingValues]);
+  const suggestions = useMemo(() => new Map(groupedValues.map(group => [group.normalized_value, suggestTemplateMatch(group.routing_value, templates)])), [groupedValues, templates]);
   const persistedRuleState = useMemo(() => Object.fromEntries(groupedValues.map((group) => {
     const found = initialRules.find((rule) => rule.normalized_value === group.normalized_value);
     return [group.normalized_value, { action: found?.action ?? "skip", templateId: found?.template_id ?? "" } satisfies RuleDraft];
@@ -48,7 +49,7 @@ export function RoutingPanel({ dataset, columns, templates, initialRules, routin
     setRules((current) => Object.fromEntries(groupedValues.map((group) => {
       const existing = current[group.normalized_value];
       if (existing?.templateId) return [group.normalized_value, existing];
-      const suggestion = suggestTemplate(group.routing_value, templates);
+      const suggestion = suggestions.get(group.normalized_value)?.template;
       return [group.normalized_value, suggestion ? { action: "template" as const, templateId: suggestion.id } : existing ?? { action: "skip" as const, templateId: "" }];
     })));
   }
@@ -108,7 +109,7 @@ export function RoutingPanel({ dataset, columns, templates, initialRules, routin
     <Card>
       <CardHeader><CardTitle>Choose templates</CardTitle></CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border bg-[var(--surface-hover)] p-4"><div className="text-xs font-bold normal-case tracking-normal text-[var(--muted-foreground)]">Column that chooses the email</div><div className="mt-2 font-semibold">{routingColumn?.original_label || "Not selected"}</div><p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">Use “Exact match” to suggest emails by Category first, then Name (ignoring case and extra spaces). Review every choice below. Skipped recipients receive no email.</p></div>
+        <div className="rounded-lg border bg-[var(--surface-hover)] p-4"><div className="text-xs font-bold normal-case tracking-normal text-[var(--muted-foreground)]">Column that chooses the email</div><div className="mt-2 font-semibold">{routingColumn?.original_label || "Not selected"}</div><p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">Use “Suggest templates” to match categories or names, recognize business types within location text, and handle common wording or minor typos. With several business types, the first recognized phrase wins. Unclear matches need your choice. Review and save before sending.</p></div>
         <div><Label htmlFor="default-template">Default email for unmatched values (optional)</Label><Select id="default-template" value={fallback} onChange={(event) => { setFallback(event.target.value); setSavedAt(null); setDirty(true); onDirtyChange?.(true); }} disabled={pending}><option value="">No default — choose or skip each value</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</Select></div>
       </CardContent>
     </Card>
@@ -116,11 +117,11 @@ export function RoutingPanel({ dataset, columns, templates, initialRules, routin
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
         <div><CardTitle>Choose an email for each spreadsheet value</CardTitle><div className="mt-2 flex flex-wrap gap-2"><Badge tone="success">Direct template: {mapped}</Badge><Badge tone={fallbackCount ? "info" : "neutral"}>Fallback: {fallbackCount}</Badge><Badge tone={skippedCount ? "warning" : "success"}>Skipped: {skippedCount}</Badge></div></div>
-        <Button variant="outline" onClick={autoMatch} disabled={pending}><WandSparkles size={14} />Suggest exact matches</Button>
+        <Button variant="outline" onClick={autoMatch} disabled={pending}><WandSparkles size={14} />Suggest templates</Button>
       </CardHeader>
       <CardContent>
         {groupedValues.length ? <div className="divide-y rounded-lg border">{groupedValues.map((group) => <div className="grid gap-3 px-4 py-3 md:grid-cols-[1fr_90px_170px_1fr] md:items-center" key={group.normalized_value}>
-          <div><div className="text-sm font-semibold">{group.routing_value}</div>{group.aliases.length > 1 && <div className="mt-1 text-xs text-[var(--muted-foreground)]">Combined {group.aliases.length} equivalent spellings</div>}</div>
+          <div className="min-w-0 break-words"><div className="text-sm font-semibold">{group.routing_value}</div>{group.aliases.length > 1 && <div className="mt-1 text-xs text-[var(--muted-foreground)]">Combined {group.aliases.length} equivalent spellings</div>}{suggestions.get(group.normalized_value)?.template.id === rules[group.normalized_value]?.templateId && rules[group.normalized_value]?.action === "template" && suggestions.get(group.normalized_value)?.method !== "exact" && <p className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">{suggestions.get(group.normalized_value)?.method === "typo" ? "Possible spelling match" : "Matched business type"}: {suggestions.get(group.normalized_value)?.matchedLabel}. Review before saving.</p>}</div>
           <div className="text-xs text-[var(--muted-foreground)]">{group.row_count} rows</div>
           <Select aria-label={`Action for ${group.routing_value}`} disabled={pending} value={rules[group.normalized_value]?.action ?? "skip"} onChange={(event) => updateRule(group.normalized_value, { action: event.target.value as RoutingRule["action"] })}><option value="template">Use template</option><option value="fallback">Use default</option><option value="skip">Skip</option></Select>
           <Select aria-label={`Email template for ${group.routing_value}`} disabled={pending || rules[group.normalized_value]?.action !== "template"} value={rules[group.normalized_value]?.templateId ?? ""} onChange={(event) => updateRule(group.normalized_value, { action: "template", templateId: event.target.value })}><option value="">Choose template</option>{templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</Select>

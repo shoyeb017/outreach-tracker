@@ -77,6 +77,24 @@ describe("first-time spreadsheet setup", () => {
     expect(screen.getByRole("heading", { name: "Personalize your emails" })).toBeInTheDocument();
     expect(screen.getByLabelText("Spreadsheet column for company_name")).toHaveValue("Business Name");
   });
+  it.each([
+    ["Accounting firm Arlington, Virginia", false],
+    ["Accounting firm Arlington, Virginia, Business consulting Arlington", false],
+    ["Acounting firm Arlington", true],
+  ])("suggests the accounting template during creation for %s", async (value, typo) => {
+    const rows = [{ "Public Email": "contact@example.com", "Business Name": value }];
+    vi.mocked(parseSpreadsheetFile).mockResolvedValue({ ...parsedSheet, rows, previewRows: rows });
+    const accounting = { ...template, id: "accounting", name: "Accounting firm Outreach", category: "Accounting firm" };
+    const consulting = { ...template, id: "consulting", name: "Business consulting Outreach", category: "Business consulting" };
+    render(<ImportWizard templates={[consulting, accounting]} />); await upload();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Different templates by spreadsheet value/ }));
+    fireEvent.change(screen.getByLabelText("Which column should choose the template?"), { target: { value: "Business Name" } });
+    expect(screen.getByLabelText(`Action for ${value}`)).toHaveValue("template");
+    expect(screen.getByLabelText(`Email template for ${value}`)).toHaveValue("accounting");
+    expect(screen.getByText(typo ? /Possible spelling match: Accounting firm/ : /Matched business type: Accounting firm/)).toBeInTheDocument();
+    expect(mocks.database).not.toHaveBeenCalled();
+  });
   it("requires a specific template only for Choose a template, and allows deliberate skips", async () => {
     render(<ImportWizard templates={[template]} />); await upload();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));

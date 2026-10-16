@@ -42,8 +42,17 @@ Both HTML and plain-text content are included. Connect **company_name** to your 
 
 For one template for everyone, select the appropriate business template in the spreadsheet setup.
 
-For different templates by spreadsheet value, use a column such as **Business type**, with values such as `Marketing agency` or `Landscaping company`. The new template's Category matches that business type, so **Exact match** can suggest it. Review the choices and save them before sending.
+For different templates by spreadsheet value, choose a column such as **Business type** or your existing search-phrase column. Suggestions first check the full template Category or Name, then recognize business phrases within longer values. In an existing spreadsheet, click **Suggest templates**. New spreadsheet setup uses the same matching rules when you choose the decision column.
 
-Keep locations in a separate column if needed. A whole search phrase such as `Landscaping company Arlington, Virginia` is not an exact category match; either select the template manually or use a separate business-type column. The original broad industry categories still match their original templates.
+- `Accounting firm Arlington, Virginia` suggests **Accounting firm Outreach**.
+- `Accounting firm Arlington, Virginia, Business consulting Arlington` also suggests **Accounting firm Outreach**: the first recognized business phrase wins, not the first template in the list.
+- `Digital marketing agency Arlington` suggests **Digital marketing agency Outreach**, not the broader marketing-agency template.
+- Common wording such as `Accountancy firm`, `Staffing agency`, and plural forms is supported. Minor spelling errors can produce a possible spelling match when no recognized phrase is found; review these carefully.
+
+Locations do not need separate templates. A separate business-type column remains useful but is not required. Duplicate matching templates and unclear values are left for you to choose manually; generic words such as `company` are not enough. This is a conservative text matcher, not an AI decision about the business. The original exact industry matches still work.
+
+Suggestions never save choices or send emails on their own. Review the chosen template for every group, correct or skip any uncertain group, and save before sending. Existing selected templates are not replaced when you click **Suggest templates**. Saved rules still use the original spreadsheet value, including its location text.
+
+The improved matcher is a website code update: deploy the updated application to use it on Vercel. It does not need a new SQL migration or new permissions. The template-loading SQL above is only needed if those templates are not already installed.
 
 Ready-made templates are protected. Use **Make a copy** to edit one, then select your copy for the spreadsheet. Preview real rows before confirming a send.

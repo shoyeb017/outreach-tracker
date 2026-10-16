@@ -4,7 +4,7 @@ A template is a reusable subject and email body. Personal fields let the same me
 
 Open **Email templates** and create a template, or copy a ready-made template. Ready-made templates are protected; edit your own copy. Give it a recognizable name and category so you can choose it confidently later.
 
-Alongside the 23 industry messages and Blank Template, an optional library expansion adds 15 business-type messages, including marketing agencies, IT/software companies, consultants, accounting/bookkeeping services, recruiters, contractors, real estate/property managers, and landscaping companies. Each works in any location and only uses `{{company_name}}` and `{{signature}}`. Administrators add them by running **supabase/migrations/20261016_business_outreach_templates.sql**; the repository guide **docs/business-outreach-templates.md** lists all names. For routing, match a Business type value such as `Landscaping company`, not a full city-specific search phrase.
+Alongside the 23 industry messages and Blank Template, an optional library expansion adds 15 business-type messages, including marketing agencies, IT/software companies, consultants, accounting/bookkeeping services, recruiters, contractors, real estate/property managers, and landscaping companies. Each works in any location and only uses `{{company_name}}` and `{{signature}}`. Administrators add them by running **supabase/migrations/20261016_business_outreach_templates.sql**; the repository guide **docs/business-outreach-templates.md** lists all names. Template suggestions recognize both a business type such as `Landscaping company` and a longer value such as `Landscaping company Arlington, Virginia`. Review suggestions before saving your choices.
 
 Example subject:
 

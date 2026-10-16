@@ -20,7 +20,9 @@ There are two approaches:
 
 Example: the value `Banking` in your `Sector` column can select your financial services template. `Healthcare` can select your healthcare template. These are your routing choices; a spreadsheet column name is not itself a template name.
 
-Suggestions match spreadsheet values to a template's category or name. Check each group and choose **Skip these recipients**, **Choose a template**, or **Use default template**. A group using the default requires you to select an active **Default template** before continuing. An explicit Skip is never overridden by the default. Rows with a missing or unmatched value use the default if you selected one; otherwise they cannot be sent.
+Suggestions first match a full category or template name, then look for business phrases within longer text. For example, `Accounting firm Arlington, Virginia` suggests **Accounting firm Outreach**. With several recognized business phrases, the first one wins; more specific wording wins over a shorter phrase at the same position. Common wording and plural forms are supported. Minor typos may produce a possible spelling match only when no recognized phrase is found. Duplicate matching templates and unclear values require your choice. In existing spreadsheets, use **Suggest templates**; it keeps templates you already selected and does not save automatically.
+
+Check each group and choose **Skip these recipients**, **Choose a template**, or **Use default template**. A group using the default requires you to select an active **Default template** before continuing. An explicit Skip is never overridden by the default. Rows with a missing or unmatched value use the default if you selected one; otherwise they cannot be sent. Always review the final recipient previews before sending.
 
 ## Personalize: where the message values come from
 

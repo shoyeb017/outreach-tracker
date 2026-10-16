@@ -17,7 +17,7 @@ import { Select } from "@/components/ui/select";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { mapImportedRow, parseSpreadsheetFile, type ParsedSheet } from "@/lib/spreadsheet/parser";
 import { dataPlaceholdersForTemplates } from "@/lib/templates/dataset-mapping";
-import { groupRoutingValues, normalizeRoutingValue, suggestTemplate } from "@/lib/templates/routing";
+import { groupRoutingValues, normalizeRoutingValue, suggestTemplate, suggestTemplateMatch } from "@/lib/templates/routing";
 import type { EmailTemplate, SubjectStrategy } from "@/types";
 
 const steps = ["Upload", datasetSteps[0].label, datasetSteps[1].label, datasetSteps[2].label, "Save spreadsheet"];
@@ -63,6 +63,7 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     for (const row of parsed.rows) { const value = String(row[routingColumn] ?? "").trim(); if (value) counts.set(value, (counts.get(value) ?? 0) + 1); }
     return groupRoutingValues(Array.from(counts, ([routing_value, row_count]) => ({ routing_value, row_count }))).map((group) => group.routing_value);
   }, [parsed, routingColumn]);
+  const routeSuggestions = useMemo(() => new Map(routeValues.map(value => [value, suggestTemplateMatch(value, templates)])), [routeValues, templates]);
   const selectedTemplates = useMemo(() => {
     const ids = new Set((templateMode === "column" ? routeValues.map((value) => routeMap[value]).filter(Boolean) : []).filter((route) => route.action === "template" && route.templateId).map((route) => route.templateId));
     if (fallbackTemplate) ids.add(fallbackTemplate);
@@ -243,11 +244,13 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
       {templateMode === "single" ? <div><Label htmlFor="everyone-template">Email template for everyone</Label><Select id="everyone-template" value={fallbackTemplate} onChange={(event) => setFallbackTemplate(event.target.value)}><option value="">Choose email template</option>{templateOptions}</Select></div> : <>
       <div><Label htmlFor="template-column">Which column should choose the template?</Label><Select id="template-column" value={routingColumn} required onChange={(event) => { const label = event.target.value; setIssue(""); setRoutingColumn(label); const counts = new Map<string, number>(); parsed?.rows.forEach((row) => { const value = String(row[label] ?? "").trim(); if (value) counts.set(value, (counts.get(value) ?? 0) + 1); }); const groups = groupRoutingValues([...counts].map(([routing_value, row_count]) => ({ routing_value, row_count }))); setRouteMap(Object.fromEntries(groups.map((group) => { const suggestion = suggestTemplate(group.routing_value, templates); return [group.routing_value, { action: suggestion ? "template" : "skip", templateId: suggestion?.id ?? "" }]; }))); }}><option value="">Choose a column, such as Industry</option>{columnOptions}</Select><p className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">We read each row’s value from this column. Suggestions match that value to a template’s category or name. You decide which template each group receives below.</p></div>
       {routingColumn && <>
+        <p className="text-xs leading-5 text-[var(--muted-foreground)]">Suggestions recognize business types even when a value includes a location, common wording, or a minor typo. For example, “Accounting firm Arlington, Virginia” can match “Accounting firm Outreach”. If several business types appear, the first recognized phrase wins. Unclear matches are left for you to choose.</p>
         <p className="text-xs leading-5 text-[var(--muted-foreground)]">For each spreadsheet value, skip these recipients, choose a specific template, or use one shared default template. Suggestions are not confirmed until you save. Values with no match start as skipped.</p>
         <div className="divide-y rounded-lg border">{routeValues.map((value) => {
           const action = routeMap[value]?.action ?? "skip";
+          const suggestion = routeSuggestions.get(value);
           return <div key={value} className="grid min-w-0 gap-3 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,210px)_minmax(0,1fr)]">
-            <div className="break-words text-sm font-semibold">{value}<span className="mt-1 block text-xs font-normal text-[var(--muted-foreground)]">{parsed?.rows.filter((row) => normalizeRoutingValue(row[routingColumn]) === normalizeRoutingValue(value)).length} recipients</span></div>
+            <div className="break-words text-sm font-semibold">{value}<span className="mt-1 block text-xs font-normal text-[var(--muted-foreground)]">{parsed?.rows.filter((row) => normalizeRoutingValue(row[routingColumn]) === normalizeRoutingValue(value)).length} recipients</span>{suggestion && action === "template" && suggestion.template.id === routeMap[value]?.templateId && suggestion.method !== "exact" && <p className="mt-1 text-xs font-normal leading-5 text-[var(--muted-foreground)]">{suggestion.method === "typo" ? "Possible spelling match" : "Matched business type"}: {suggestion.matchedLabel}. Review before saving.</p>}</div>
             <Select aria-label={`Action for ${value}`} value={action} onChange={(event) => { setIssue(""); setRouteMap((current) => ({ ...current, [value]: { ...current[value], action: event.target.value as "template" | "fallback" | "skip", templateId: current[value]?.templateId ?? "" } })); }}><option value="skip">Skip these recipients</option><option value="template">Choose a template</option><option value="fallback">Use default template</option></Select>
             {action === "template" ? <Select aria-label={`Email template for ${value}`} required value={routeMap[value]?.templateId ?? ""} onChange={(event) => { setIssue(""); setRouteMap((current) => ({ ...current, [value]: { action: "template", templateId: event.target.value } })); }}><option value="">Choose email template</option>{templateOptions}</Select> : <p className="self-center break-words text-xs leading-5 text-[var(--muted-foreground)]">{action === "skip" ? "No email will be sent to these recipients." : fallbackTemplate ? `Default: ${templates.find((template) => template.id === fallbackTemplate)?.name ?? "Choose an available template below"}` : "Choose the required default template below."}</p>}
           </div>;

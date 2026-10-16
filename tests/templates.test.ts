@@ -25,7 +25,7 @@ describe("template resolution", () => {
     expect(normalizeSignatureTokenBlocks("<p>Before {{signature}} after</p>")).toBe("<p>Before {{signature}} after</p>");
   });
 
-  it("normalizes routing conservatively and only suggests exact matches", () => {
+  it("keeps stored routing normalization stable and avoids unsupported broad guesses", () => {
     const templates = [{ id: "finance", name: "Finance", category: "Financial Services & Banking", is_active: true, is_archived: false }];
     expect(normalizeRoutingValue("  FINANCIAL   Services & Banking ")).toBe("financial services & banking");
     expect(suggestTemplate("financial services & banking", templates as never)?.id).toBe("finance");
