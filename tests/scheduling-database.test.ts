@@ -23,7 +23,7 @@ beforeAll(async () => {
   `);
   await db.exec(readFileSync("supabase/schema.sql", "utf8"));
   await db.exec("grant select,insert,update,delete on all tables in schema public to authenticated; grant all on all tables in schema public to service_role;");
-  for (const migration of ["20261008_admin_microsoft.sql", "20261009_admin_controls.sql", "20261015_scheduled_mail.sql", "20261016_scheduled_test_mail.sql", "20261019_email_engagement.sql", "20261019_history_followups.sql"]) await db.exec(readFileSync(`supabase/migrations/${migration}`, "utf8"));
+  for (const migration of ["20261008_admin_microsoft.sql", "20261009_admin_controls.sql", "20261015_scheduled_mail.sql", "20261016_scheduled_test_mail.sql", "20261019_email_engagement.sql", "20261019_history_followups.sql", "20261019_record_deletion.sql"]) await db.exec(readFileSync(`supabase/migrations/${migration}`, "utf8"));
 }, 60000);
 afterAll(async () => { await db?.close(); });
 beforeEach(async () => {
@@ -435,5 +435,63 @@ describe("history follow-up creation without click activity", () => {
     await expect(db.query("select * from public.email_history_followups")).rejects.toThrow(/permission denied/);
     await db.exec("select public.delete_my_application_data(); reset role; select set_config('request.jwt.claim.role','service_role',false)");
     expect((await db.query("select * from public.email_history_followups")).rows).toHaveLength(0);
+  });
+});
+
+async function deleteRecords(kind: string, ids: string[], account = owner) {
+  return (await db.query<{ data: { removed: number; retainedSafetyLogs: boolean } }>(
+    "select public.records_delete_selection($1,$2,$3) data",[account,kind,ids])).rows[0].data;
+}
+describe("safe individual and bulk record deletion", () => {
+  it("removes history from its list without weakening recipient/template duplicate protection", async () => {
+    await seedEngagement(); const item = await trackedItem(); await acceptTracked(item); const h = await saveHistory(item);
+    expect(await deleteRecords("history",[h])).toMatchObject({removed:1,retainedSafetyLogs:true});
+    expect((await db.query("select * from public.email_history where deleted_at is null")).rows).toHaveLength(0);
+    expect((await db.query("select * from public.email_history where status='sent' and recipient_email='reader@example.com'")).rows).toHaveLength(1);
+    expect((await db.query("select * from public.send_run_items where id=$1",[item])).rows).toHaveLength(1);
+    expect((await deleteRecords("history",[h])).removed).toBe(0);
+    await expect(historyFollowup([h])).rejects.toThrow(/removed/);
+  });
+  it("allows history removal across spreadsheets and includes test entries without changing source rows", async () => {
+    await seedEngagement(); const a=await trackedItem(); await acceptTracked(a); const h1=await saveHistory(a);
+    const b=await trackedItem({test:true}); await acceptTracked(b); const h2=await saveHistory(b,"sent",true);
+    expect((await deleteRecords("history",[h1,h2])).removed).toBe(2);
+    expect((await db.query("select * from public.dataset_rows where dataset_id=$1",[dataset])).rows).toHaveLength(1);
+  });
+  it("permanently deletes selected engagement rows, disables only those links and keeps email history", async () => {
+    await seedEngagement();
+    const a=await trackedItem(), ma=await prepareTracked(a); await acceptTracked(a); await saveHistory(a);
+    const b=await trackedItem(), mb=await prepareTracked(b); await acceptTracked(b);
+    expect((await deleteRecords("engagement",[ma.id])).removed).toBe(1);
+    expect(await visit(ma.token_hash)).toBeNull(); expect(await visit(mb.token_hash)).toBe(engagementSettings.destination);
+    expect((await db.query("select * from public.email_history")).rows).toHaveLength(1);
+  });
+  it("protects pending/unknown engagement and rejects mixed foreign selections atomically", async () => {
+    await seedEngagement(); const a=await trackedItem(),ma=await prepareTracked(a);
+    await expect(deleteRecords("engagement",[ma.id])).rejects.toThrow(/Pending/);
+    await acceptTracked(a);
+    await expect(deleteRecords("engagement",[ma.id,crypto.randomUUID()])).rejects.toThrow(/unavailable/);
+    await expect(deleteRecords("engagement",[ma.id],other)).rejects.toThrow(/unavailable/);
+    expect((await db.query("select * from public.email_engagement_messages")).rows).toHaveLength(1);
+  });
+  it("removes finished schedules only and preserves runs, history and unknown-send protection", async () => {
+    const b=await create(true);
+    await expect(deleteRecords("schedule",[b])).rejects.toThrow(/Only finished/);
+    await due(b); const lease=await start(); const item=await itemFor(b);
+    await db.query("select public.scheduler_arm_item($1,$2)",[item.id,lease]);
+    await db.query("select public.scheduler_change_batch($1,$2,'cancel')",[owner,b]);
+    await db.query("select public.scheduler_finish_item($1,$2,'uncertain','Check Sent Items')",[item.id,lease]);
+    await expect(deleteRecords("schedule",[b])).rejects.toThrow(/Only finished/);
+    await db.query("select public.scheduler_resolve_unknown($1,$2,$3,false)",[owner,b,item.id]);
+    expect((await deleteRecords("schedule",[b])).removed).toBe(1);
+    expect((await db.query("select * from public.scheduled_mail_batches where deleted_at is null")).rows).toHaveLength(0);
+    expect((await db.query("select * from public.send_runs where scheduled_batch_id=$1",[b])).rows).toHaveLength(1);
+    expect((await db.query("select * from public.email_history")).rows).toHaveLength(1);
+  });
+  it("rejects unknown kinds, excessive IDs and browser execution", async () => {
+    await expect(deleteRecords("users",[])).rejects.toThrow(/Choose/);
+    await expect(deleteRecords("history",Array(501).fill(crypto.randomUUID()))).rejects.toThrow(/Choose/);
+    await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${owner}',false); select set_config('request.jwt.claim.role','authenticated',false);`);
+    await expect(deleteRecords("history",[crypto.randomUUID()])).rejects.toThrow(/permission denied/);
   });
 });

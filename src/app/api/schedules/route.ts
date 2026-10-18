@@ -7,7 +7,7 @@ export async function GET(request: Request) {
     const page = Math.max(1, Math.min(10000, Number(new URL(request.url).searchParams.get("page")) || 1));
     const view = new URL(request.url).searchParams.get("view") ?? "upcoming";
     const statuses = view === "history" ? ["completed", "completed_with_errors", "cancelled"] : view === "attention" ? ["paused", "reconnect_required", "needs_attention", "completed_with_errors"] : ["scheduled", "running", "paused", "reconnect_required", "needs_attention"];
-    const result = await context.database.from("scheduled_mail_batches").select("*,items:scheduled_mail_items(status)", { count: "exact" }).eq("user_id", context.user.id).in("status", statuses).order(view === "upcoming" ? "scheduled_at" : "created_at", { ascending: view === "upcoming" }).range((page - 1) * 20, page * 20 - 1);
+    const result = await context.database.from("scheduled_mail_batches").select("*,items:scheduled_mail_items(status)", { count: "exact" }).eq("user_id", context.user.id).is("deleted_at", null).in("status", statuses).order(view === "upcoming" ? "scheduled_at" : "created_at", { ascending: view === "upcoming" }).range((page - 1) * 20, page * 20 - 1);
     const batches = checked(result);
     const [health, connection] = await Promise.all([schedulerHealth(context.database), backgroundStatus(context)]);
     return Response.json({ batches, total: result.count ?? 0, page, health, connection }, { headers: { "Cache-Control": "no-store" } });

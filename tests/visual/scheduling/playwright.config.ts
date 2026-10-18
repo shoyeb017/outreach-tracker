@@ -2,7 +2,7 @@ import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 const root = path.resolve(__dirname, "../../..");
 export default defineConfig({
-  testDir: path.join(root, "tests/browser"), testMatch: ["scheduled-mail.spec.ts", "engagement.spec.ts", "history-followup.spec.ts"],
+  testDir: path.join(root, "tests/browser"), testMatch: ["scheduled-mail.spec.ts", "engagement.spec.ts", "history-followup.spec.ts", "record-deletion.spec.ts"],
   outputDir: path.join(root, "test-results"), workers: 1,
   use: { ...devices["Desktop Chrome"], baseURL: "http://127.0.0.1:3110", screenshot: "only-on-failure", trace: "retain-on-failure" },
   webServer: { cwd: root, command: "node node_modules/vite/bin/vite.js --config tests/visual/scheduling/vite.config.mjs", url: "http://127.0.0.1:3110", timeout: 60000, reuseExistingServer: process.env.PLAYWRIGHT_SCHEDULING_EXTERNAL_SERVER === "1",

@@ -5,11 +5,23 @@ import { createHistoryPreview } from "@/lib/ui-preview/history";
 
 const requests = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("@/lib/engagement/client", () => ({ engagementRequest: requests.request }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/components/ui/dialog", () => ({ Dialog: ({ title, children }: { title: string; children: React.ReactNode }) => <div role="dialog" aria-label={title}>{children}</div> }));
 afterEach(cleanup);
 
 describe("readable history", () => {
+  it("deletes one filtered history entry only after confirmation and removes it from the list", async () => {
+    requests.request.mockResolvedValue({ removed: 1 });
+    const rows = createHistoryPreview(); render(<HistoryTable rows={rows} />);
+    fireEvent.change(screen.getByLabelText("Search history"), { target: { value: "international.partnerships" } });
+    fireEvent.click(screen.getByRole("button", { name: `Delete history for ${rows[0].recipient_email}, ${rows[0].id}` }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByRole("button", { name: "Confirm deletion" })).toBeDisabled();
+    fireEvent.click(dialog.getByRole("checkbox")); fireEvent.click(dialog.getByRole("button", { name: "Confirm deletion" }));
+    await screen.findByText("0 emails found");
+    expect(requests.request).toHaveBeenCalledWith("/api/records/delete", expect.objectContaining({ method: "POST" }));
+    expect(rows).toHaveLength(28);
+  });
   it("filters scheduled results and selects zero-click recipients for a separately confirmed follow-up", async () => {
     requests.request.mockResolvedValue({ id: "new-sheet", added: 1 });
     const rows = createHistoryPreview(); rows[0].sending_method = "scheduled"; rows[1].sending_method = "manual";
@@ -24,16 +36,16 @@ describe("readable history", () => {
     await screen.findByText(/Follow-up spreadsheet created/);
     expect(requests.request).toHaveBeenCalledWith("/api/history/followup", expect.objectContaining({ method: "POST" }));
     expect(screen.getByRole("link", { name: "Choose template and review" })).toHaveAttribute("href", "/datasets/new-sheet?tab=required-setup");
-    await waitFor(() => expect(screen.getByText("0 selected for follow-up")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("0 records selected")).toBeInTheDocument());
   });
-  it("clears selection when filters change and excludes test results", () => {
+  it("clears selection when filters change and allows removing test results without reusing them", () => {
     const rows = createHistoryPreview(); rows[1].is_test = true;
     render(<HistoryTable rows={rows} />);
-    expect(screen.getByRole("checkbox", { name: `Select ${rows[1].recipient_email}, history ${rows[1].id}` })).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: `Select ${rows[1].recipient_email}, history ${rows[1].id}` })).toBeEnabled();
     fireEvent.click(screen.getByRole("checkbox", { name: `Select ${rows[0].recipient_email}, history ${rows[0].id}` }));
-    expect(screen.getByText("1 selected for follow-up")).toBeInTheDocument();
+    expect(screen.getByText("1 record selected")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("History status"), { target: { value: "sent" } });
-    expect(screen.getByText("0 selected for follow-up")).toBeInTheDocument();
+    expect(screen.getByText("0 records selected")).toBeInTheDocument();
   });
   it("fetches the full saved body only when the preview is opened and neutralizes tracking links", async () => {
     const rows = createHistoryPreview(); rows[0].body_loaded = false; rows[0].final_html_body = "";

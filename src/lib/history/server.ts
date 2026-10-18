@@ -16,7 +16,7 @@ export async function loadHistory(client: SupabaseClient) {
   const { data: auth, error: authError } = await client.auth.getUser();
   if (authError || !auth.user) return { rows: [], error: authError && authError.status !== 401 && authError.status !== 403 ? historyLoadError() : "Your session has expired. Sign in again to view email history." };
   const owner = auth.user.id;
-  const result = await client.from("email_history").select(HISTORY_FIELDS).eq("user_id", owner).order("sent_at", { ascending: false }).order("id").limit(1000);
+  const result = await client.from("email_history").select(HISTORY_FIELDS).eq("user_id", owner).is("deleted_at", null).order("sent_at", { ascending: false }).order("id").limit(1000);
   if (result.error) {
     console.error("Email history list failed", { code: result.error.code });
     return { rows: [], error: historyLoadError(result.error.code) };

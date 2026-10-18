@@ -6,7 +6,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     const id = z.string().uuid().parse((await context.params).id);
     const { user, client } = await engagementUser();
-    const result = await client.from("email_history").select("final_html_body,final_plain_text_body").eq("user_id", user.id).eq("id", id).maybeSingle();
+    const result = await client.from("email_history").select("final_html_body,final_plain_text_body").eq("user_id", user.id).eq("id", id).is("deleted_at", null).maybeSingle();
     if (result.error) return Response.json({ error: historyLoadError(result.error.code) }, { status: 503, headers: { "Cache-Control": "no-store" } });
     if (!result.data) return Response.json({ error: "This saved email is no longer available." }, { status: 404, headers: { "Cache-Control": "no-store" } });
     return Response.json(result.data, { headers: { "Cache-Control": "no-store" } });

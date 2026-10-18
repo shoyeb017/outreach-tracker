@@ -4,7 +4,7 @@ import { checked, scheduleUser, schedulingFailure, smallJson } from "@/lib/sched
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { user, database } = await scheduleUser(); const id = z.string().uuid().parse((await params).id);
-    const batch = checked(await database.from("scheduled_mail_batches").select("*").eq("id", id).eq("user_id", user.id).single(), "This schedule is not available.");
+    const batch = checked(await database.from("scheduled_mail_batches").select("*").eq("id", id).eq("user_id", user.id).is("deleted_at", null).single(), "This schedule is not available.");
     const items = checked(await database.from("scheduled_mail_items").select("*").eq("batch_id", id).eq("user_id", user.id).order("id"));
     return Response.json({ batch, items }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return schedulingFailure(error); }

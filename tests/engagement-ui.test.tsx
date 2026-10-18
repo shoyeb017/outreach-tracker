@@ -14,12 +14,12 @@ const results={messages:[message],sources:[{id:source,name:"Contacts"}],campaign
 beforeEach(()=>{vi.clearAllMocks();mocks.request.mockImplementation(async(url:string,options?:RequestInit)=>url==="/api/engagement/settings"?{settings:{...defaultEngagement,enabled:true,destination:"https://inuberry.com"}}:options?.method==="POST"?{id:"new-spreadsheet",added:1,omitted:0}:results);});
 afterEach(cleanup);
 describe("simple engagement UI",()=>{
- it("selects a zero-click message directly, chooses its source automatically and requires confirmation",async()=>{
+ it("selects a zero-click message directly without filtering out other spreadsheets and requires confirmation",async()=>{
   render(<EngagementWorkspace/>);await screen.findByText("reader@example.com");
   expect(screen.getByRole("button",{name:"Create follow-up spreadsheet"})).toBeDisabled();
   expect(screen.getByRole("checkbox")).toBeEnabled();
   fireEvent.click(screen.getByRole("checkbox"));
-  await waitFor(()=>expect(screen.getByLabelText("Source spreadsheet")).toHaveValue(source));
+  await waitFor(()=>expect(screen.getByRole("button",{name:"Create follow-up spreadsheet"})).toBeEnabled());
   fireEvent.click(screen.getByRole("button",{name:"Create follow-up spreadsheet"}));
   expect(screen.getByRole("button",{name:"Create spreadsheet"})).toBeDisabled();
   fireEvent.click(screen.getByRole("checkbox",{name:/Create this spreadsheet only/}));
@@ -35,7 +35,7 @@ describe("simple engagement UI",()=>{
   expect(screen.getByText(/Activity recording is paused in Settings/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Source spreadsheet"),{target:{value:source}});
   await waitFor(()=>expect(screen.getByRole("checkbox",{name:`Select reader@example.com, message ${id}`})).toBeEnabled());
-  expect(screen.getByRole("checkbox",{name:"Select failed@example.com, message failed"})).toBeDisabled();
+  expect(screen.getByRole("checkbox",{name:"Select failed@example.com, message failed"})).toBeEnabled();
   fireEvent.click(screen.getByRole("checkbox",{name:`Select reader@example.com, message ${id}`}));
   fireEvent.change(screen.getByLabelText("Activity"),{target:{value:"suspected"}});
   await waitFor(()=>expect(screen.getByRole("button",{name:"Create follow-up spreadsheet"})).toBeDisabled());

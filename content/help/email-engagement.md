@@ -57,9 +57,17 @@ Use appropriate contact permissions and a privacy notice. No visitor IP or raw U
 
 ## Follow up with or without a click
 
-You can select a Microsoft-accepted message in Email engagement as soon as it is listed. No link visit is required. Select its checkbox to choose the source spreadsheet automatically, or choose a spreadsheet first and select matching recipients. The “No recorded link visits” filter includes messages with suspected-only activity; “No activity of any kind” excludes those too.
+You can select a Microsoft-accepted message in Email engagement as soon as it is listed. No link visit is required. Select its checkbox directly, or filter by spreadsheet and select matching recipients. Keep one source spreadsheet in the selection when creating a follow-up. The “No recorded link visits” filter includes messages with suspected-only activity; “No activity of any kind” excludes those too.
 
 For older emails that had no engagement button, open **Email history** instead. Filter send-now or scheduled results, choose recipients from one spreadsheet and select **Create follow-up spreadsheet**. Tests are excluded. This copies data only: choose a template and review before a separate Send or Schedule confirmation. Duplicate, invalid and do-not-email addresses are excluded. Current spreadsheet data is used unless a send-time engagement snapshot is available.
 
 Scheduled email results appear in Email history after processing, including failed, skipped and cancelled results. Future/pending schedules and unconfirmed outcomes are managed in **Scheduled mail**, not treated as successfully sent. Manual Compose messages are in your mailbox’s Sent folder.
+
+## Remove records safely
+
+Use the row’s **Delete** button, or select records and choose **Delete selected**. Check the count and read the confirmation. Selection is available even without clicks. You can select across spreadsheets for deletion; follow-ups still require eligible recipients from one spreadsheet.
+
+Deleting engagement records permanently removes their activity and disables their links. Removing Email history or finished Scheduled history entries hides them from those lists but keeps internal send records/content for audit and duplicate protection; it is not full data erasure or storage cleanup. Other sections, source spreadsheets and Microsoft messages are unchanged.
+
+Active or unknown-outcome emails cannot be removed. Cancel a future schedule to stop its pending emails, then resolve any unknown outcomes before removing its history. Removal never recalls or sends an email.
 

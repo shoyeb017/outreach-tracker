@@ -22,7 +22,7 @@ test("history selects scheduled recipients and confirms a follow-up responsively
     await expect(page.getByText("14 emails found")).toBeVisible();
     const container = width < 768 ? page.getByRole("list", { name: "Email history cards" }) : page.getByRole("table");
     await container.getByRole("checkbox").first().check();
-    await expect(page.getByText("1 selected for follow-up")).toBeVisible();
+    await expect(page.getByText("1 record selected")).toBeVisible();
     await page.getByRole("button", { name: "Create follow-up spreadsheet" }).click();
     const dialog = page.getByRole("dialog", { name: "Create a follow-up spreadsheet" });
     await expect(dialog.getByRole("button", { name: "Create spreadsheet" })).toBeDisabled();
@@ -31,7 +31,7 @@ test("history selects scheduled recipients and confirms a follow-up responsively
     if (width !== 768) await page.screenshot({ path: info.outputPath(`history-followup-${theme}-${width}.png`), fullPage: true });
     await dialog.getByRole("button", { name: "Create spreadsheet" }).click();
     await expect(page.getByRole("link", { name: "Choose template and review" })).toHaveAttribute("href", "/datasets/followup-sheet?tab=required-setup");
-    await expect(page.getByText("0 selected for follow-up")).toBeVisible();
+    await expect(page.getByText("0 records selected")).toBeVisible();
   }
   expect(posts).toHaveLength(6);
   expect(errors).toEqual([]);

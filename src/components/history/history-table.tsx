@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, LoaderCircle, RefreshCw, Search } from "lucide-react";
 import { safeEngagementPreview } from "@/lib/engagement/core";
+import { DeleteRecords } from "@/components/records/delete-records";
 import { HistoryFollowup } from "./history-followup";
 import { engagementRequest } from "@/lib/engagement/client";
 import { Dialog } from "@/components/ui/dialog";
@@ -29,8 +30,16 @@ export function HistoryTable({ rows, readOnlyDemo = false }: { rows: HistoryRow[
   const previewRequest = useRef(0);
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [method, setMethod] = useState("all"), [previewLoading, setPreviewLoading] = useState(false), [previewError, setPreviewError] = useState("");
-  const selectionSource = rows.find(row => selection.has(row.id))?.dataset_id;
-  function selectable(row: HistoryRow) { return !readOnlyDemo && !!row.dataset_id && !!row.dataset_row_id && !row.is_test && (!selectionSource || row.dataset_id === selectionSource); }
+  const [notice, setNotice] = useState("");
+  const [removed, setRemoved] = useState<Set<string>>(new Set());
+  const selectedRows = rows.filter(row => selection.has(row.id));
+  const followupReady = selectedRows.length > 0 && selectedRows.every(row => !!row.dataset_id && !!row.dataset_row_id && !row.is_test && row.dataset_id === selectedRows[0].dataset_id);
+  function selectable(row: HistoryRow) { return !readOnlyDemo && !removed.has(row.id); }
+  function deleted(ids: string[]) {
+    setRemoved(current => new Set([...current, ...ids])); setSelection(new Set());
+    setNotice(`${ids.length} record(s) removed from Email history. Internal sending and duplicate-protection logs are kept.`); router.refresh();
+    if (selected && ids.includes(selected.id)) { previewRequest.current++; setSelected(null); }
+  }
   function toggleRow(row: HistoryRow) { setSelection(current => { const next = new Set(current); if (next.has(row.id)) next.delete(row.id); else if (selectable(row) && next.size < 500) next.add(row.id); return next; }); }
   async function openPreview(row: HistoryRow) {
     const request = ++previewRequest.current;
@@ -52,8 +61,8 @@ export function HistoryTable({ rows, readOnlyDemo = false }: { rows: HistoryRow[
   const filtered = useMemo(() => rows.filter((row) => {
     const sent = new Date(row.sent_at); const after = !fromDate || sent >= new Date(`${fromDate}T00:00:00`); const before = !toDate || sent <= new Date(`${toDate}T23:59:59.999`);
     const haystack = [row.recipient_email, row.recipient_name, row.company_name, row.subject, row.datasets?.name, row.templates?.name].join(" ").toLowerCase();
-    return (method === "all" || row.sending_method === method) && (status === "all" || row.status === status) && (dataset === "all" || (row.dataset_id ?? "scheduled-tests") === dataset) && (template === "all" || row.templates?.name === template) && after && before && haystack.includes(search.toLowerCase());
-  }), [rows, search, status, dataset, template, fromDate, toDate, method]);
+    return !removed.has(row.id) && (method === "all" || row.sending_method === method) && (status === "all" || row.status === status) && (dataset === "all" || (row.dataset_id ?? "scheduled-tests") === dataset) && (template === "all" || row.templates?.name === template) && after && before && haystack.includes(search.toLowerCase());
+  }), [rows, search, status, dataset, template, fromDate, toDate, method, removed]);
   function clearFilters() { setSelection(new Set()); setMethod("all"); setSearch(""); setStatus("all"); setDataset("all"); setTemplate("all"); setFromDate(""); setToDate(""); setPage(0); }
   function changeFilter(setValue: (value: string) => void, value: string) { setSelection(new Set()); setValue(value); setPage(0); }
   const pageCount = Math.max(1, Math.ceil(filtered.length / 25));
@@ -65,6 +74,7 @@ export function HistoryTable({ rows, readOnlyDemo = false }: { rows: HistoryRow[
 
 
   return <>
+    {notice && <p role="status" className="mb-5 rounded-md border bg-[var(--info-soft)] p-4 text-sm">{notice}</p>}
     <Card>
       <CardHeader className="space-y-5">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_200px_200px]">
@@ -82,36 +92,34 @@ export function HistoryTable({ rows, readOnlyDemo = false }: { rows: HistoryRow[
       </CardHeader>
       <CardContent>
         {!readOnlyDemo && <div className="mb-5 space-y-3 rounded-md border bg-[var(--muted)] p-4">
-          <p className="text-sm font-semibold">{selection.size} selected for follow-up</p>
-          <p className="text-xs leading-6 text-[var(--muted-foreground)]">Select recipients from one spreadsheet. No link click is needed. Test emails cannot be reused. Changing filters clears your selection; changing pages keeps it.</p>
+          <p className="text-sm font-semibold">{selection.size} {selection.size === 1 ? "record" : "records"} selected</p>
+          <p className="text-xs leading-6 text-[var(--muted-foreground)]">Select records to delete from this list. For a follow-up, select non-test recipients from one spreadsheet. No link click is needed. Changing filters clears your selection; changing pages keeps it.</p>
           <div className="flex flex-wrap items-center gap-3"><Button variant="outline" disabled={!filtered.some(selectable)} onClick={() => {
-            const source = selectionSource || (dataset !== "all" ? dataset : filtered.find(selectable)?.dataset_id);
-            if (!source) return;
-            setSelection(new Set(filtered.filter(row => selectable(row) && row.dataset_id === source).slice(0, 500).map(row => row.id)));
-          }}>Select matching (up to 500)</Button><Button variant="ghost" disabled={!selection.size} onClick={() => setSelection(new Set())}>Clear selection</Button><HistoryFollowup ids={[...selection]} onCreated={() => setSelection(new Set())} /></div>
-          {selectionSource && <p className="text-xs text-[var(--muted-foreground)]">Selection spreadsheet: {rows.find(row => row.dataset_id === selectionSource)?.datasets?.name || "Spreadsheet"}. Other spreadsheets remain unselected.</p>}
+            setSelection(new Set(filtered.filter(selectable).slice(0, 500).map(row => row.id)));
+          }}>Select matching (up to 500)</Button><Button variant="ghost" disabled={!selection.size} onClick={() => setSelection(new Set())}>Clear selection</Button><HistoryFollowup ids={followupReady ? [...selection] : []} onCreated={() => setSelection(new Set())} /><DeleteRecords kind="history" ids={[...selection]} onDeleted={deleted} /></div>
+          {selection.size > 0 && !followupReady && <p className="text-xs text-[var(--muted-foreground)]">To create a follow-up, select only non-test recipients from the same spreadsheet. Mixed selections can still be removed.</p>}
         </div>}
         <p className="mb-3 hidden text-xs text-[var(--muted-foreground)] md:block">Scroll inside the table when needed to see all email details.</p>
         <div className="table-frame hidden max-h-[70dvh] md:block" role="region" tabIndex={0} aria-label="Send history table, scroll to see more columns">
           <table className="data-table w-full min-w-[1040px]" data-density={density}>
             <caption className="sr-only">Email history. Recipient and company are grouped together; message details include the template and spreadsheet.</caption>
             <colgroup><col style={{ width: 156 }} /><col style={{ width: 280 }} /><col style={{ width: 320 }} /><col style={{ width: 188 }} /><col style={{ width: 96 }} /></colgroup>
-            <thead className="sticky top-0 z-10"><tr><th scope="col">When</th><th scope="col">Recipient</th><th scope="col">Message & source</th><th scope="col">Result</th><th scope="col">Preview</th></tr></thead>
+            <thead className="sticky top-0 z-10"><tr><th scope="col">When</th><th scope="col">Recipient</th><th scope="col">Message & source</th><th scope="col">Result</th><th scope="col">Actions</th></tr></thead>
             <tbody>{visibleRows.map((row) => <tr key={row.id}>
               <td><time dateTime={row.sent_at}>{formatDate(row.sent_at)}</time></td>
-              <td>{!readOnlyDemo && <label className="mb-3 flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`Select ${row.recipient_email}, history ${row.id}`} checked={selection.has(row.id)} disabled={!selectable(row) || (!selection.has(row.id) && selection.size >= 500)} onChange={() => toggleRow(row)} />Select for follow-up</label>}<p className="font-semibold">{row.recipient_email}</p>{row.recipient_name && <span className="cell-meta">{row.recipient_name}</span>}{row.company_name && <span className="cell-meta">{row.company_name}</span>}</td>
+              <td>{!readOnlyDemo && <label className="mb-3 flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`Select ${row.recipient_email}, history ${row.id}`} checked={selection.has(row.id)} disabled={!selectable(row) || (!selection.has(row.id) && selection.size >= 500)} onChange={() => toggleRow(row)} />Select record</label>}<p className="font-semibold">{row.recipient_email}</p>{row.recipient_name && <span className="cell-meta">{row.recipient_name}</span>}{row.company_name && <span className="cell-meta">{row.company_name}</span>}</td>
               <td><p className="font-semibold">{row.subject || "No subject"}</p><span className="cell-meta">Template: {row.templates?.name || (row.dataset_id ? "Not recorded" : "Fixed test message")}</span>{sourceLink(row)}</td>
               <td>{resultBadge(row)}<span className="cell-meta">{methodLabel(row)}</span>{row.error_message && <span className="cell-meta">Open preview for error details.</span>}</td>
-              <td><Button variant="ghost" size="icon" aria-label={`View full email to ${row.recipient_email}`} title="View full email" onClick={() => void openPreview(row)}><Eye size={18} /></Button></td>
+              <td><Button variant="ghost" size="icon" aria-label={`View full email to ${row.recipient_email}`} title="View full email" onClick={() => void openPreview(row)}><Eye size={18} /></Button>{!readOnlyDemo && <DeleteRecords kind="history" ids={[row.id]} compact label={`Delete history for ${row.recipient_email}, ${row.id}`} onDeleted={deleted} />}</td>
             </tr>)}</tbody>
           </table>
         </div>
         <div className="space-y-4 md:hidden" data-density={density} role="list" aria-label="Email history cards">{visibleRows.map((row) => <article key={row.id} role="listitem" className="history-mobile-card">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">{resultBadge(row)}<time className="text-xs text-[var(--muted-foreground)]" dateTime={row.sent_at}>{formatDate(row.sent_at)}</time></div>
-          {!readOnlyDemo && <label className="mb-3 flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`Select ${row.recipient_email}, history ${row.id} (mobile)`} checked={selection.has(row.id)} disabled={!selectable(row) || (!selection.has(row.id) && selection.size >= 500)} onChange={() => toggleRow(row)} />Select for follow-up</label>}<p className="mb-2 text-xs text-[var(--muted-foreground)]">{methodLabel(row)}</p><p className="break-all text-base font-semibold">{row.recipient_email}</p>{row.recipient_name && <p className="mt-2 text-sm">{row.recipient_name}</p>}{row.company_name && <p className="mt-1 text-sm text-[var(--muted-foreground)]">{row.company_name}</p>}
+          {!readOnlyDemo && <label className="mb-3 flex items-center gap-2 text-xs"><input type="checkbox" aria-label={`Select ${row.recipient_email}, history ${row.id} (mobile)`} checked={selection.has(row.id)} disabled={!selectable(row) || (!selection.has(row.id) && selection.size >= 500)} onChange={() => toggleRow(row)} />Select record</label>}<p className="mb-2 text-xs text-[var(--muted-foreground)]">{methodLabel(row)}</p><p className="break-all text-base font-semibold">{row.recipient_email}</p>{row.recipient_name && <p className="mt-2 text-sm">{row.recipient_name}</p>}{row.company_name && <p className="mt-1 text-sm text-[var(--muted-foreground)]">{row.company_name}</p>}
           <p className="mt-5 border-t pt-4 text-sm font-semibold">{row.subject || "No subject"}</p><p className="mt-3 text-sm text-[var(--muted-foreground)]">Template: {row.templates?.name || "Not recorded"}</p>
           {sourceLink(row)}
-          <Button className="mt-5" variant="secondary" onClick={() => setSelected(row)}><Eye size={16} />View full email</Button>
+          <div className="mt-5 flex flex-wrap gap-3"><Button variant="secondary" onClick={() => void openPreview(row)}><Eye size={16} />View full email</Button>{!readOnlyDemo && <DeleteRecords kind="history" ids={[row.id]} compact label={`Delete history for ${row.recipient_email}, ${row.id} (mobile)`} onDeleted={deleted} />}</div>
         </article>)}</div>
         {!filtered.length && <div className="py-12 text-sm text-[var(--muted-foreground)]">No history matches these filters.</div>}
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t pt-5"><p className="text-sm text-[var(--muted-foreground)]">{filtered.length ? `${currentPage * 25 + 1}–${Math.min(currentPage * 25 + 25, filtered.length)} of ${filtered.length.toLocaleString()}` : "0 emails"} · Page {currentPage + 1} of {pageCount}</p><div className="flex gap-2"><Button variant="outline" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Previous</Button><Button variant="outline" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button></div></div>

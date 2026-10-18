@@ -18,8 +18,6 @@ export async function GET(request: Request) {
     const search = (query.get("search") ?? "").slice(0, 120).replace(/[%_\\]/g, "");
     if (search) messages = messages.ilike("recipient_email", `%${search}%`);
     const selecting = query.get("selection") === "1";
-    if (selecting && !source) throw new Error("Choose one source spreadsheet before selecting all matching messages.");
-    if (selecting) messages = messages.eq("status", "accepted");
     const result = await messages.order("created_at", { ascending: false }).order("id").range(selecting ? 0 : (page - 1) * 50, selecting ? 499 : page * 50 - 1);
     const data = engagementChecked(result);
     const metadata = selecting ? {} : engagementChecked(await database.rpc("engagement_sources", { p_owner: user.id }));

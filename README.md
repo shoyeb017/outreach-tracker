@@ -164,6 +164,8 @@ For a new project, run these files in Supabase SQL Editor in order:
 
 11. [`20261019_history_followups.sql`](supabase/migrations/20261019_history_followups.sql) — apply after the engagement migration. Adds follow-up spreadsheets from send-now and scheduled email history, even without link activity. Deploy the updated website; no additional worker change is needed for this migration.
 
+12. [`20261019_record_deletion.sql`](supabase/migrations/20261019_record_deletion.sql) — apply after history-followups, before deploying. Adds individual/bulk removal with confirmations, protected active sends and retained duplicate-send logs.
+
 Enable email/password authentication, configure the Site URL and `/auth/callback` redirect, and keep email confirmation enabled in production.
 
 **Existing database?** Back it up and apply only missing migrations in their documented order. Older installations may also need the dynamic-signature and signature-logo upgrades. Do not blindly rerun the admin migration or template seed. Follow the [Supabase setup and RLS guide](supabase/README.md).

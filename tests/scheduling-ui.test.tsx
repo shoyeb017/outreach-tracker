@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-const mocks = vi.hoisted(() => ({ request: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
+const mocks = vi.hoisted(() => ({ request: vi.fn(), remove: vi.fn(), push: vi.fn(), refresh: vi.fn() }));
 vi.mock("@/lib/scheduling/client", () => ({ schedulingRequest: mocks.request }));
+vi.mock("@/lib/engagement/client", () => ({ engagementRequest: mocks.remove }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push, refresh: mocks.refresh }) }));
 vi.mock("@/components/ui/dialog", () => ({ Dialog: ({ title, children }: { title: string; children: React.ReactNode }) => <section role="dialog" aria-label={title}>{children}</section> }));
 import { ScheduleDialog } from "@/components/scheduling/schedule-dialog";
@@ -24,6 +25,31 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("simple scheduled-email UI", () => {
+  it("selects finished schedule history, confirms deletion and refreshes without cancelling or sending", async () => {
+    let removed = false;
+    const completed = { ...batch, status: "completed", items: [{ status: "accepted" }] };
+    mocks.request.mockImplementation(async () => ({ batches: removed ? [] : [completed], total: removed ? 0 : 1, page: 1, health, connection }));
+    mocks.remove.mockImplementation(async () => { removed = true; return { removed: 1 }; });
+    render(<ScheduledMailHub />);
+    await screen.findByRole("button", { name: "View details" });
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    const checkbox = await screen.findByRole("checkbox", { name: "Select schedule Contacts, batch" });
+    fireEvent.click(checkbox); fireEvent.click(screen.getByRole("button", { name: "Delete selected schedules" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Delete 1 schedule?" }));
+    expect(dialog.getByRole("button", { name: "Confirm deletion" })).toBeDisabled();
+    fireEvent.click(dialog.getByRole("checkbox")); fireEvent.click(dialog.getByRole("button", { name: "Confirm deletion" }));
+    await screen.findByText("No scheduled-send history yet");
+    expect(mocks.remove).toHaveBeenCalledWith("/api/records/delete", expect.objectContaining({ method: "POST" }));
+    expect(mocks.request.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(false);
+  });
+  it("does not allow selection or deletion of cancelled schedules that still have unknown results", async () => {
+    mocks.request.mockResolvedValue({ batches: [{ ...batch, status: "cancelled", items: [{ status: "uncertain" }] }], total: 1, page: 1, health, connection });
+    render(<ScheduledMailHub />);
+    await screen.findByRole("button", { name: "View details" });
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(await screen.findByRole("checkbox", { name: "Select schedule Contacts, batch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete schedule Contacts, batch" })).toBeDisabled();
+  });
   it("requires a separate explicit confirmation and keeps controls before the table", async () => {
     render(<ScheduleDialog datasetId="dataset" rowIds={["row", "blocked"]} duplicatePolicy="block_template_recipient" onClose={vi.fn()} />);
     const confirm = await screen.findByRole("button", { name: "Confirm practice schedule" }); expect(confirm).toBeDisabled();

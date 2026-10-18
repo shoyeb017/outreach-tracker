@@ -10,6 +10,7 @@ Open your [Supabase project's SQL Editor](https://supabase.com/dashboard/project
 2. In VS Code, open **supabase/migrations/20261019_email_engagement.sql**. Copy the **whole file**.
 3. Paste it into a new SQL query and click **Run**. Apply this migration once; do not rerun old migrations or template seeds.
 4. Run **supabase/migrations/20261019_history_followups.sql** in a new SQL query after the engagement migration. This adds follow-up spreadsheet creation from Email history. If the engagement migration was already applied, do not rerun it—run only this new migration.
+   Then run **supabase/migrations/20261019_record_deletion.sql** once, after history-followups. It adds selected/individual record removal and protects active or unknown-outcome sends. Apply this before deploying the updated history screens.
 5. Open **supabase/engagement-maintenance.sql**, copy the whole file, and run it in a second query. It creates an hourly cleanup job named `autmail-engagement-cleanup`. If `cron` is missing, enable **pg_cron** in Database → Extensions first. Your existing scheduled-mail setup may already have enabled it.
 6. Confirm the last query shows `active = true`. This cleanup job sends no emails and uses no worker secret. Check its run history in Supabase's Cron interface.
 
@@ -97,11 +98,23 @@ The automated suite uses fake Graph calls and an isolated SQL database. Deployme
 
 - **Email history** includes results from both **Send now** and **Scheduled mail**, including accepted, failed, skipped, cancelled and practice results. Use **Sending method** to choose either. Future/pending schedules and unconfirmed outcomes remain in **Scheduled mail** until a final result is saved. The history migration also restores missing final scheduled results from saved run items; it does not send or retry anything.
 - This is spreadsheet campaign history (including its practice/test results), not a copy of every message in your Microsoft mailbox. Manual Compose messages remain in the mailbox’s Sent folder.
-- Select a row directly or filter by spreadsheet, result, template, date or sending method, then choose **Select matching (up to 500)**. A selection uses one source spreadsheet so column mappings stay consistent. Tests cannot be copied.
+- Select a row directly or filter by spreadsheet, result, template, date or sending method, then choose **Select matching (up to 500)**. A follow-up selection must use one source spreadsheet so column mappings stay consistent, and tests cannot be copied. Deletion selections may span spreadsheets and include tests.
 - Click **Create follow-up spreadsheet**, name it and confirm **Create only**. The next screen lets you choose a template, review recipients and separately Send or Schedule. No email is sent by creating a spreadsheet.
 - History follow-ups do not require engagement to be enabled or a link visit. They use a saved engagement recipient snapshot when available; otherwise they use the current source row. The actual sent-to email is always retained in the mapped recipient column. Recent selected records take precedence when deduplicating addresses; invalid and suppressed addresses are excluded.
-- **Email engagement** also supports selecting accepted messages with zero clicks. Clicking a row checkbox chooses its source spreadsheet automatically. **No recorded link visits** includes suspected-only activity; **No activity of any kind** excludes suspected activity too. These filters cannot prove an email was unread.
+- **Email engagement** also supports selecting accepted messages with zero clicks. Select rows directly or filter by source spreadsheet. Follow-ups require accepted messages from one spreadsheet; deletion selections can be broader. **No recorded link visits** includes suspected-only activity; **No activity of any kind** excludes suspected activity too. These filters cannot prove an email was unread.
 - History loads only list details first, then fetches one saved body when you open its preview. If loading fails, use **Retry email history**. An unavailable optional template/scheduling label does not hide the email results.
 - If follow-up creation says a database update is needed, apply **20261019_history_followups.sql** once, after the engagement migration, and redeploy the website. No worker redeploy or Microsoft permission change is required for this follow-up update.
 - Follow-up creation checks the conservative 400 MB database-size safeguard before copying data. This is not a quota guarantee: copied spreadsheets and other application data still use storage. Review Supabase usage and retain only the data you need.
+
+## Delete one record or a selection
+
+Each section has a **Delete** action for one entry, plus checkboxes and **Delete selected**. Choose matching results or select records individually (up to 500). Changing filters clears selection; changing pages keeps it. Confirm the count and check the acknowledgement before continuing.
+
+- **Email engagement:** removes selected activity records and recipient snapshots permanently and disables their tracking links. Email history and existing follow-up spreadsheets stay intact. Pending and unknown-outcome records cannot be deleted.
+- **Email history:** removes selected entries from this list, including tests and entries from multiple spreadsheets. Internal sending records and saved content are retained for auditing and duplicate protection. Other sections and Microsoft messages are unchanged. This is not complete data erasure and does not reclaim that storage.
+- **Scheduled mail → History:** select finished schedules or delete one from its card/details. A schedule must have no pending, sending or unknown-outcome recipients. Internal schedule snapshots, sending logs and duplicate protections remain; Email history and engagement are not deleted. Upcoming schedules must be cancelled, not deleted, to stop future sending. Resolve any unknown results before removal.
+- No action recalls an email or deletes anything from Microsoft. Removing records does not send, retry, cancel a different schedule, or delete the source spreadsheet.
+- Individual removal and bulk removal both use the same authenticated, owner-scoped, server-only validation. A selection containing unavailable/foreign/protected records is rejected as a whole; refresh and select again.
+- Full engagement-history clearing is also protected and limited to 500 records per confirmation. Use filtered selections for larger lists.
+- For full workspace-data erasure, use the existing account/application-data deletion controls deliberately. Routine list removal preserves the safety ledger by design.
 

@@ -13,7 +13,7 @@ function database(results: Record<string, { data: unknown; error: unknown }>, au
   const chains: Record<string, Record<string, ReturnType<typeof vi.fn>>> = {};
   const from = vi.fn((table: string) => {
     const chain: Record<string, ReturnType<typeof vi.fn>> = {};
-    for (const method of ["select", "eq", "in", "order"]) chain[method] = vi.fn(() => chain);
+    for (const method of ["select", "eq", "in", "order", "is"]) chain[method] = vi.fn(() => chain);
     chain.limit = vi.fn(async () => results[table]);
     chain.maybeSingle = vi.fn(async () => results[table]);
     chain.then = vi.fn((resolve: (value: unknown) => unknown) => Promise.resolve(results[table]).then(resolve));
