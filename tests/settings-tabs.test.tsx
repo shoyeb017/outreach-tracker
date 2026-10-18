@@ -13,6 +13,7 @@ vi.mock("@/lib/microsoft/msal", () => ({ acquireGraphToken: vi.fn(), connectMicr
 const panels: Record<SettingsSection, ReactNode> = {
   microsoft: <h2>Mailbox connection controls</h2>,
   signature: <label>Example signature line<input /></label>,
+  engagement: <h2>Engagement button controls</h2>,
   sending: <h2>Practice and sending controls</h2>,
   account: <h2>Workspace identity controls</h2>,
   privacy: <button>Delete example data</button>,
@@ -24,9 +25,9 @@ beforeEach(() => { window.history.replaceState(null, "", "/settings"); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("top-tab settings layout", () => {
-  it("shows five top tabs and only the email account panel by default", () => {
+  it("shows six top tabs and only the email account panel by default", () => {
     render(<SettingsTabs panels={panels} />);
-    expect(screen.getAllByRole("tab")).toHaveLength(5);
+    expect(screen.getAllByRole("tab")).toHaveLength(6);
     expect(screen.getAllByRole("tabpanel")).toHaveLength(1);
     expect(screen.getByRole("tab", { name: "Email account" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("heading", { name: "Mailbox connection controls" })).toBeVisible();

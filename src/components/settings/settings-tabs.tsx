@@ -1,11 +1,12 @@
 "use client";
 
 import { useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
-import { Mail, PenLine, Send, ShieldCheck, UserRound } from "lucide-react";
+import { Mail, PenLine, Send, ShieldCheck, UserRound, MousePointerClick } from "lucide-react";
 
 const sections = [
   { id: "microsoft", label: "Email account", icon: Mail, description: "Connect the Microsoft mailbox your emails will be sent from. You can practice without connecting." },
   { id: "signature", label: "Signature", icon: PenLine, description: "Build the sign-off recipients see at the end of your emails. Add only the lines and logo you need." },
+  { id: "engagement", label: "Email engagement", icon: MousePointerClick, description: "Customize a campaign button and manage link activity." },
   { id: "sending", label: "Sending", icon: Send, description: "Choose practice or real sending, and set the defaults for new email reviews." },
   { id: "account", label: "My account", icon: UserRound, description: "Update workspace details or change your login password. Neither changes your Microsoft sending address." },
   { id: "privacy", label: "Data & privacy", icon: ShieldCheck, description: "Manage addresses that must not receive emails, or remove your application data." },

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ENGAGEMENT_PREVIEW_URL, defaultEngagement } from "@/lib/engagement/core";
 import { SCHEDULE_TEST_MESSAGE } from "@/lib/scheduling/test-message";
 let db: PGlite;
 const owner = "11111111-1111-4111-8111-111111111111", other = "22222222-2222-4222-8222-222222222222";
@@ -22,7 +23,7 @@ beforeAll(async () => {
   `);
   await db.exec(readFileSync("supabase/schema.sql", "utf8"));
   await db.exec("grant select,insert,update,delete on all tables in schema public to authenticated; grant all on all tables in schema public to service_role;");
-  for (const migration of ["20261008_admin_microsoft.sql", "20261009_admin_controls.sql", "20261015_scheduled_mail.sql", "20261016_scheduled_test_mail.sql"]) await db.exec(readFileSync(`supabase/migrations/${migration}`, "utf8"));
+  for (const migration of ["20261008_admin_microsoft.sql", "20261009_admin_controls.sql", "20261015_scheduled_mail.sql", "20261016_scheduled_test_mail.sql", "20261019_email_engagement.sql", "20261019_history_followups.sql"]) await db.exec(readFileSync(`supabase/migrations/${migration}`, "utf8"));
 }, 60000);
 afterAll(async () => { await db?.close(); });
 beforeEach(async () => {
@@ -247,5 +248,192 @@ describe("actual PostgreSQL scheduling migration and transitions", () => {
     await expect(db.query("update public.background_mail_connections set status='connected' where user_id=$1", [owner])).rejects.toThrow(/being deleted/);
     await db.query("update public.microsoft_integrations set connection_status='not_connected',connected_email=null,home_account_id=null where user_id=$1", [owner]);
     expect((await db.query<{ status: string }>("select status from public.background_mail_connections")).rows[0].status).toBe("disconnected");
+  });
+});
+
+const engagementSettings = { ...defaultEngagement, enabled: true, destination: "https://inuberry.com/services", origin: "https://autmail.vercel.app" };
+async function seedEngagement() {
+  await db.query("insert into public.email_engagement_settings(user_id,enabled,destination) values($1,true,$2)", [owner,engagementSettings.destination]);
+  await db.query("insert into public.dataset_columns(user_id,dataset_id,original_label,placeholder_slug,standard_field) values($1,$2,'Contact email','contact_email','recipient_email'),($1,$2,'Company','company',null)", [owner,dataset]);
+  await db.query("insert into public.dataset_placeholder_mappings(user_id,dataset_id,placeholder,column_id) select $1,$2,'company_name',id from public.dataset_columns where dataset_id=$2 and placeholder_slug='company'",[owner,dataset]);
+  await db.query("update public.dataset_rows set data=$1,original_data=$1 where id=$2",[JSON.stringify({contact_email:"reader@example.com",company:"Original company"}),row]);
+}
+async function trackedItem(options: { live?: boolean; test?: boolean; status?: string; recipient?: string } = {}) {
+  const run=crypto.randomUUID(), item=crypto.randomUUID();
+  await db.query("insert into public.send_runs(id,user_id,dataset_id,live_enabled,is_test,status) values($1,$2,$3,$4,$5,'paused')",[run,owner,dataset,options.live??true,options.test??false]);
+  await db.query("insert into public.send_run_items(id,user_id,send_run_id,dataset_row_id,recipient_email,template_id,resolved_subject,resolved_html_body,resolved_plain_text_body,status,attempts,engagement_snapshot) values($1,$2,$3,$4,$5,$6,'Test subject',$7,$8,$9,1,$10)", [item,owner,run,row,options.recipient??"reader@example.com",template,`<p>Message</p><a href="${ENGAGEMENT_PREVIEW_URL}">Visit</a>`,ENGAGEMENT_PREVIEW_URL,options.status??"sending",JSON.stringify(engagementSettings)]);
+  return item;
+}
+async function prepareTracked(item: string) {
+  const result=(await db.query<{data:{htmlBody:string}}>("select public.engagement_prepare_send($1,'https://autmail.vercel.app') data",[item])).rows[0].data;
+  const token=result.htmlBody.match(/\/e\/([a-f0-9]{64})/)![1];
+  const message=(await db.query<{id:string;token_hash:string}>("select id,token_hash from public.email_engagement_messages where send_run_item_id=$1",[item])).rows[0];
+  return {...message,token,html:result.htmlBody};
+}
+async function acceptTracked(item:string) { await db.query("update public.send_run_items set status='sent',sent_at=now()-interval '20 seconds' where id=$1",[item]); }
+async function visit(hash:string,kind="visit",viewer:string|null=null) { return (await db.query<{dest:string|null}>("select public.engagement_visit($1,$2,$3) dest",[hash,kind,viewer])).rows[0].dest; }
+async function messageFor(item:string) { return (await db.query<{status:string;activity_count:number;suspected_count:number;accepted_at:string|null}>("select status,activity_count,suspected_count,accepted_at from public.email_engagement_messages where send_run_item_id=$1",[item])).rows[0]; }
+
+describe("email engagement database protections",()=>{
+  it("does not create tokens for views, queued items, tests, or practice",async()=>{
+    await seedEngagement();
+    for(const options of [{status:"queued"},{live:false},{test:true}]) await expect(prepareTracked(await trackedItem(options))).rejects.toThrow(/claimed real email/);
+    expect((await db.query("select * from public.email_engagement_messages")).rows).toHaveLength(0);
+  });
+  it("creates a private random link before Graph, activates only on acceptance, and is idempotent",async()=>{
+    await seedEngagement(); const item=await trackedItem(), m=await prepareTracked(item);
+    expect(m.token).toHaveLength(64); expect(m.token_hash).not.toBe(m.token); expect(m.html).not.toContain("reader@example.com");
+    expect(await prepareTracked(item)).toEqual(m);
+    expect(await visit(m.token_hash)).toBe(engagementSettings.destination); expect((await messageFor(item)).activity_count).toBe(0);
+    await acceptTracked(item); expect((await messageFor(item)).status).toBe("accepted");
+    await visit(m.token_hash); await visit(m.token_hash); expect((await messageFor(item)).activity_count).toBe(1);
+  });
+  it("uses different links for separate sends to the same address",async()=>{
+    await seedEngagement(); const a=await prepareTracked(await trackedItem()),b=await prepareTracked(await trackedItem()); expect(a.token).not.toBe(b.token);
+  });
+  it("does not record failed/unconfirmed sends, owner visits, HEAD or prefetch kinds",async()=>{
+    await seedEngagement(); const item=await trackedItem(),m=await prepareTracked(item);
+    await db.query("update public.send_run_items set status='failed' where id=$1",[item]); await visit(m.token_hash); expect((await messageFor(item)).activity_count).toBe(0);
+    await acceptTracked(item); await visit(m.token_hash,"visit",owner); await visit(m.token_hash,"ignore"); expect((await messageFor(item)).activity_count).toBe(0);
+    await visit(m.token_hash,"suspected"); expect((await messageFor(item)).suspected_count).toBe(1);
+  });
+  it("keeps very early visits separate and pauses collection without changing a sent destination",async()=>{
+    await seedEngagement(); const item=await trackedItem(),m=await prepareTracked(item);
+    await db.query("update public.send_run_items set status='sent',sent_at=now() where id=$1",[item]); await visit(m.token_hash);
+    expect(await messageFor(item)).toMatchObject({activity_count:0,suspected_count:1});
+    await db.query("update public.email_engagement_settings set collection_enabled=false,destination='https://example.com/new' where user_id=$1",[owner]);
+    expect((await db.query<{data:{collectionEnabled:boolean}}>("select public.engagement_sources($1) data",[owner])).rows[0].data.collectionEnabled).toBe(false);
+    expect(await visit(m.token_hash)).toBe("https://inuberry.com/services"); expect((await messageFor(item)).activity_count).toBe(0);
+  });
+  it("expires links and deletes bounded old records",async()=>{
+    await seedEngagement(); const item=await trackedItem(),m=await prepareTracked(item); await acceptTracked(item);
+    await db.query("update public.email_engagement_messages set expires_at=now()-interval '1 minute' where id=$1",[m.id]); expect(await visit(m.token_hash)).toBeNull();
+    await db.query("select public.engagement_prune()"); expect(await messageFor(item)).toBeUndefined();
+  });
+  it("has no browser or anonymous access to hashes, counters or privileged RPCs",async()=>{
+    await seedEngagement(); await prepareTracked(await trackedItem());
+    const foreign=crypto.randomUUID();await db.query("insert into public.datasets(id,user_id,name) values($1,$2,'Another workspace')",[foreign,other]);
+    for(const role of ["anon","authenticated"]) {
+      await db.exec(`set role ${role}; select set_config('request.jwt.claim.sub','${owner}',false); select set_config('request.jwt.claim.role','${role}',false);`);
+      try {
+        if(role==="authenticated") await expect(db.query("update public.datasets set engagement_source_dataset_id=$1 where id=$2",[foreign,dataset])).rejects.toThrow(/ownership mismatch/);
+        await expect(db.query("select * from public.email_engagement_messages")).rejects.toThrow(/permission denied/);
+        await expect(db.query("select public.engagement_prepare_send($1,'https://autmail.vercel.app')",[row])).rejects.toThrow(/permission denied/);
+        await expect(db.query("select public.engagement_create_followup($1,$2,'Unsafe',$3)",[owner,[],crypto.randomUUID()])).rejects.toThrow(/permission denied/);
+      } finally { await db.exec("reset role; select set_config('request.jwt.claim.role','service_role',false)"); }
+    }
+  });
+  it("copies send-time row values and remaps columns, deduplicates addresses, excludes suppression and requires a fresh template",async()=>{
+    await seedEngagement(); const a=await trackedItem();const ma=await prepareTracked(a);await acceptTracked(a);
+    await db.query("update public.dataset_rows set data=jsonb_set(data,'{company}','\"Latest company\"') where id=$1",[row]);
+    const b=await trackedItem(),mb=await prepareTracked(b);await acceptTracked(b);
+    const c=await trackedItem({recipient:"blocked@example.com"}),mc=await prepareTracked(c);await acceptTracked(c);
+    await db.query("insert into public.suppression_list(user_id,email,email_normalized) values($1,'blocked@example.com','blocked@example.com')",[owner]);
+    const key=crypto.randomUUID();const args=[owner,[ma.id,mb.id,mc.id],"My follow-up",key];
+    const result=(await db.query<{data:{id:string;added:number;omitted:number}}>("select public.engagement_create_followup($1,$2,$3,$4) data",args)).rows[0].data;
+    expect(result).toMatchObject({added:1,omitted:2});
+    const copy=(await db.query<{row_count:number;fallback_template_id:null;engagement_source_dataset_id:string}>("select * from public.datasets where id=$1",[result.id])).rows[0];
+    expect(copy).toMatchObject({row_count:1,fallback_template_id:null,engagement_source_dataset_id:dataset});
+    expect((copy as typeof copy & {engagement_source_campaign_ids:string[]}).engagement_source_campaign_ids).toHaveLength(3);
+    const values=(await db.query<{data:Record<string,string>}>("select data from public.dataset_rows where dataset_id=$1",[result.id])).rows[0].data;
+    expect(values.company).toBe("Latest company");expect(values.contact_email).toBe("reader@example.com");
+    expect((await db.query("select * from public.dataset_placeholder_mappings where dataset_id=$1",[result.id])).rows).toHaveLength(1);
+    expect((await db.query<{data:{id:string;existing:boolean}}>("select public.engagement_create_followup($1,$2,$3,$4) data",args)).rows[0].data).toMatchObject({id:result.id,existing:true});
+    expect((await db.query("select * from public.send_runs where dataset_id=$1",[result.id])).rows).toHaveLength(0);
+  });
+  it("rejects foreign, failed or empty follow-up selections without creating a spreadsheet",async()=>{
+    await seedEngagement();const item=await trackedItem(),m=await prepareTracked(item);
+    await expect(db.query("select public.engagement_create_followup($1,$2,'Follow-up',$3)",[owner,[m.id],crypto.randomUUID()])).rejects.toThrow(/unavailable/);
+    await acceptTracked(item);
+    await expect(db.query("select public.engagement_create_followup($1,$2,'Follow-up',$3)",[other,[m.id],crypto.randomUUID()])).rejects.toThrow(/unavailable/);
+    await expect(db.query("select public.engagement_create_followup($1,$2,'Follow-up',$3)",[owner,[],crypto.randomUUID()])).rejects.toThrow(/Select/);
+  });
+  it("freezes scheduled customization, prepares the link after arming, and writes the same final body to history",async()=>{
+    await seedEngagement(); const items=[{row_id:row,recipient_email:"reader@example.com",template_id:template,template_name:"Test template",subject:"Frozen subject",html_body:`<a href="${ENGAGEMENT_PREVIEW_URL}">Visit</a>`,plain_text_body:ENGAGEMENT_PREVIEW_URL,engagement_snapshot:engagementSettings}];
+    const b=(await db.query<{id:string}>("select public.scheduler_create_batch($1,$2,now()+interval '10 minutes','Asia/Dhaka',true,'allow',$3,$4) id",[owner,dataset,crypto.randomUUID(),JSON.stringify(items)])).rows[0].id;
+    await due(b);const lease=await start();const i=await itemFor(b);await db.query("select public.scheduler_arm_item($1,$2,true)",[i.id,lease]);
+    const link=await prepareTracked((await db.query<{send_run_item_id:string}>("select send_run_item_id from public.scheduled_mail_items where id=$1",[i.id])).rows[0].send_run_item_id);
+    await db.query("select public.scheduler_finish_item($1,$2,'accepted')",[i.id,lease]);
+    expect((await db.query<{final_html_body:string}>("select final_html_body from public.email_history where send_run_item_id=(select send_run_item_id from public.scheduled_mail_items where id=$1)",[i.id])).rows[0].final_html_body).toBe(link.html);
+    expect((await db.query<{status:string}>("select status from public.email_engagement_messages where id=$1",[link.id])).rows[0].status).toBe("accepted");
+    const second=(await db.query<{id:string}>("select public.scheduler_create_batch($1,$2,now()+interval '10 minutes','Asia/Dhaka',true,'allow',$3,$4) id",[owner,dataset,crypto.randomUUID(),JSON.stringify(items)])).rows[0].id;
+    await due(second);await db.query("select public.scheduler_next_item($1)",[lease]);const legacy=await itemFor(second);
+    expect((await db.query<{armed:boolean}>("select public.scheduler_arm_item($1,$2) armed",[legacy.id,lease])).rows[0].armed).toBe(false);
+    expect((await db.query<{status:string}>("select status from public.scheduled_mail_batches where id=$1",[second])).rows[0].status).toBe("needs_attention");
+  });
+});
+
+async function saveHistory(item: string, status = "sent", test = false) {
+  return (await db.query<{ id: string }>(
+    "insert into public.email_history(user_id,dataset_id,dataset_row_id,send_run_id,send_run_item_id,template_id,recipient_email,subject,final_html_body,status,is_test) select user_id,$2,dataset_row_id,send_run_id,id,template_id,recipient_email,resolved_subject,resolved_html_body,$3,$4 from public.send_run_items where id=$1 returning id",
+    [item,dataset,status,test])).rows[0].id;
+}
+async function historyFollowup(ids: (string | null)[], account = owner, key = crypto.randomUUID()) {
+  return (await db.query<{ data: { id: string; added: number; omitted: number; existing?: boolean } }>(
+    "select public.history_create_followup($1,$2,'History follow-up',$3) data",[account,ids,key])).rows[0].data;
+}
+describe("history follow-up creation without click activity", () => {
+  it("saves skipped and cancelled scheduled results in shared history without sending", async () => {
+    const cancelled = await create(true);
+    await db.query("select public.scheduler_change_batch($1,$2,'cancel')",[owner,cancelled]);
+    expect((await db.query<{status:string}>("select status from public.email_history")).rows[0].status).toBe("cancelled");
+    const skipped = await create(true); await due(skipped); const lease=await start(); const i=await itemFor(skipped);
+    await db.query("insert into public.suppression_list(user_id,email,email_normalized) values($1,'reader@example.com','reader@example.com')",[owner]);
+    expect((await db.query<{armed:boolean}>("select public.scheduler_arm_item($1,$2) armed",[i.id,lease])).rows[0].armed).toBe(false);
+    expect((await db.query<{status:string;error_message:string}>("select status,error_message from public.email_history where send_run_item_id=(select send_run_item_id from public.scheduled_mail_items where id=$1)",[i.id])).rows[0]).toMatchObject({status:"skipped",error_message:expect.stringMatching(/do-not-email|suppressed/i)});
+  });
+  it("copies an untracked email using current row data, remaps columns and never sends", async () => {
+    await seedEngagement();
+    const h = await saveHistory(await trackedItem());
+    const key = crypto.randomUUID(), result = await historyFollowup([h],owner,key);
+    expect(result.added).toBe(1);
+    const values = (await db.query<{ data: { company: string; contact_email: string } }>("select data from public.dataset_rows where dataset_id=$1",[result.id])).rows[0].data;
+    expect(values).toMatchObject({company:"Original company",contact_email:"reader@example.com"});
+    expect((await db.query("select * from public.dataset_placeholder_mappings where dataset_id=$1",[result.id])).rows).toHaveLength(1);
+    expect((await db.query<{followup_source:string;fallback_template_id:null}>("select followup_source,fallback_template_id from public.datasets where id=$1",[result.id])).rows[0]).toMatchObject({followup_source:"history",fallback_template_id:null});
+    expect((await historyFollowup([h],owner,key))).toMatchObject({id:result.id,existing:true});
+    expect((await db.query("select * from public.send_runs where dataset_id=$1",[result.id])).rows).toHaveLength(0);
+    expect((await db.query("select * from public.email_engagement_messages")).rows).toHaveLength(0);
+  });
+  it("uses a zero-click tracked snapshot instead of later source edits", async () => {
+    await seedEngagement();
+    const item = await trackedItem(); await prepareTracked(item); await acceptTracked(item);
+    const h = await saveHistory(item);
+    await db.query("update public.dataset_rows set data=jsonb_set(data,'{company}','\"Changed company\"') where id=$1",[row]);
+    const result = await historyFollowup([h]);
+    expect((await db.query<{data:{company:string}}>("select data from public.dataset_rows where dataset_id=$1",[result.id])).rows[0].data.company).toBe("Original company");
+  });
+  it("deduplicates all outcomes, excludes invalid and suppressed emails, and retains the actual sent-to email", async () => {
+    await seedEngagement();
+    const a = await saveHistory(await trackedItem({recipient:"different@example.com"}),"failed");
+    const b = await saveHistory(await trackedItem({recipient:"different@example.com"}),"skipped");
+    const blocked = await saveHistory(await trackedItem({recipient:"blocked@example.com"}));
+    const invalid = await saveHistory(await trackedItem({recipient:"not-an-email"}),"skipped");
+    await db.query("insert into public.suppression_list(user_id,email,email_normalized) values($1,'blocked@example.com','blocked@example.com')",[owner]);
+    const result = await historyFollowup([a,b,blocked,invalid]);
+    expect(result).toMatchObject({added:1,omitted:3});
+    expect((await db.query<{data:{contact_email:string}}>("select data from public.dataset_rows where dataset_id=$1",[result.id])).rows[0].data.contact_email).toBe("different@example.com");
+  });
+  it("rejects other users, null IDs, test emails and all-blocked selections atomically", async () => {
+    await seedEngagement();
+    const item = await trackedItem(), h = await saveHistory(item);
+    await expect(historyFollowup([h],other)).rejects.toThrow(/unavailable/);
+    await expect(historyFollowup([h,null])).rejects.toThrow(/unavailable/);
+    await db.query("update public.email_history set is_test=true where id=$1",[h]);
+    await expect(historyFollowup([h])).rejects.toThrow(/test emails/);
+    await db.query("update public.email_history set is_test=false where id=$1",[h]);
+    await db.query("insert into public.suppression_list(user_id,email,email_normalized) values($1,'reader@example.com','reader@example.com')",[owner]);
+    await expect(historyFollowup([h])).rejects.toThrow(/No eligible/);
+    expect((await db.query("select * from public.datasets where followup_source='history'")).rows).toHaveLength(0);
+    expect((await db.query("select * from public.email_history_followups")).rows).toHaveLength(0);
+  });
+  it("is service-only and clears private follow-up keys with application data", async () => {
+    await seedEngagement();
+    const h = await saveHistory(await trackedItem()); await historyFollowup([h]);
+    await db.exec(`grant usage on schema storage to authenticated; grant select,delete on storage.objects to authenticated; set role authenticated; select set_config('request.jwt.claim.sub','${owner}',false); select set_config('request.jwt.claim.role','authenticated',false);`);
+    await expect(historyFollowup([h])).rejects.toThrow(/permission denied/);
+    await expect(db.query("select * from public.email_history_followups")).rejects.toThrow(/permission denied/);
+    await db.exec("select public.delete_my_application_data(); reset role; select set_config('request.jwt.claim.role','service_role',false)");
+    expect((await db.query("select * from public.email_history_followups")).rows).toHaveLength(0);
   });
 });

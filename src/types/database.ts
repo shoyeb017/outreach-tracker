@@ -28,6 +28,9 @@ export interface SignatureField {
 }
 
 export interface Dataset {
+  followup_source?: "history" | null;
+  engagement_source_dataset_id?: string | null;
+  engagement_source_campaign_ids?: string[] | null;
   id: string;
   name: string;
   source_file_name: string | null;
@@ -144,6 +147,7 @@ export interface UserPreferences {
 }
 
 export interface SendQueueItem {
+  engagement?: boolean;
   id: string;
   rowId: string;
   recipientEmail: string;
@@ -175,6 +179,7 @@ export interface SendRun {
 }
 
 export interface SendRunItem {
+  engagement_snapshot?: { enabled?: boolean } | null;
   id: string;
   send_run_id: string;
   dataset_row_id: string;

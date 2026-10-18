@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DatasetRow } from "@/types";
+import { safeEngagementPreview } from "@/lib/engagement/core";
 import type { PreparedEmail } from "@/lib/email/render";
 
 interface ReviewItem {
@@ -47,7 +48,7 @@ export function SendReviewDialog({ items, summary, routingColumnLabel, duplicate
         <div className="min-w-0">
           <div className="grid gap-3 rounded-lg bg-[var(--surface-hover)] p-4 text-sm sm:grid-cols-2"><div><span className="text-xs text-[var(--muted-foreground)]">From</span><div className="font-semibold">{microsoftEmail || "Microsoft not connected"}</div></div><div><span className="text-xs text-[var(--muted-foreground)]">To</span><div className="font-semibold">{preview.row.recipient_email || "Missing"}</div></div><div><span className="text-xs text-[var(--muted-foreground)]">Template selection value</span><div className="font-semibold">{preview.row.routing_value || "Missing"}</div></div><div><span className="text-xs text-[var(--muted-foreground)]">Template</span><div className="font-semibold">{preview.email.template?.name || "Not resolved"}</div></div><div className="sm:col-span-2"><span className="text-xs text-[var(--muted-foreground)]">Subject</span><div className="font-semibold">{preview.email.subject || "Missing"}</div></div></div>
           {(preview.note || preview.warning) && <div className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--muted)] p-3 text-sm text-[var(--muted-foreground)]">{preview.note || preview.warning}</div>}
-          <div className="email-content mt-5 min-h-64 rounded-lg border bg-[var(--card)] p-5 text-sm leading-7" dangerouslySetInnerHTML={{ __html: preview.email.htmlBody || "<p>No email body resolved for this row.</p>" }} />
+          <div className="email-content mt-5 min-h-64 rounded-lg border bg-[var(--card)] p-5 text-sm leading-7" dangerouslySetInnerHTML={{ __html: safeEngagementPreview(preview.email.htmlBody) || "<p>No email body resolved for this row.</p>" }} />
           <div className="mt-5 flex justify-end"><Button onClick={() => setPreview(null)}>Back to final review</Button></div>
         </div>
     </Dialog>}

@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { DatasetWorkspace } from "@/components/datasets/dataset-workspace";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { privilegedDatabase } from "@/lib/admin/server";
+import { loadEngagement } from "@/lib/engagement/server";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +32,14 @@ export default async function DatasetPage({ params, searchParams }: { params: Pr
   const loadError = datasetResult.error || columnsResult.error || rowsResult.error || templatesResult.error || rulesResult.error || placeholderMappingsResult.error || fieldsResult.error || integrationResult.error || preferencesResult.error || suppressionsResult.error || historyResult.error || runsResult.error;
   if (loadError) throw new Error("Could not load the spreadsheet. Please try again.");
   if (!datasetResult.data) notFound();
+  const { data: { user } } = await supabase.auth.getUser();
+  const engagement = user ? await loadEngagement(privilegedDatabase(), user.id).catch(() => null) : null;
   return (
     <main className="page-shell">
       <PageHeader eyebrow="Spreadsheet" title={datasetResult.data.name} description={`${datasetResult.data.row_count.toLocaleString()} imported rows · ${datasetResult.data.source_file_name || "Imported data"}`} />
       <DatasetWorkspace
         dataset={datasetResult.data}
+        engagement={engagement}
         columns={columnsResult.data ?? []}
         initialRows={rowsResult.data ?? []}
         rowCount={rowsResult.count ?? 0}

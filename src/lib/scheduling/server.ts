@@ -2,12 +2,14 @@ import "server-only";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { assertSameOrigin, limitRequest, privilegedDatabase } from "@/lib/admin/server";
+import { engagementOrigin, loadEngagement } from "@/lib/engagement/server";
+import { engagementSettings, ENGAGEMENT_PREVIEW_URL } from "@/lib/engagement/core";
 import { prepareRowEmail } from "@/lib/email/render";
 import { checkEmailReadiness } from "@/lib/email/readiness";
 import { digest, SCHEDULE_LIMITS } from "./core";
 import type { Dataset, DatasetColumn, DatasetPlaceholderMapping, DatasetRow, EmailTemplate, RoutingRule, SignatureField } from "@/types";
 
-export const selectionInput = z.object({ datasetId: z.string().uuid(), rowIds: z.array(z.string().uuid()).min(1).max(SCHEDULE_LIMITS.recipients), duplicatePolicy: z.enum(["block_template_recipient", "warn", "allow"]).default("block_template_recipient") });
+export const selectionInput = z.object({ includeEngagement: z.boolean().optional(), datasetId: z.string().uuid(), rowIds: z.array(z.string().uuid()).min(1).max(SCHEDULE_LIMITS.recipients), duplicatePolicy: z.enum(["block_template_recipient", "warn", "allow"]).default("block_template_recipient") });
 export async function scheduleUser(request?: Request) {
   if (request) assertSameOrigin(request);
   const client = await getSupabaseServerClient();
@@ -72,13 +74,16 @@ export async function prepareSchedule(context: Awaited<ReturnType<typeof schedul
   const senderEmail = checked(integration)?.connected_email ?? null;
   const protection = checked(await client.rpc("send_recipient_protection", { p_emails: [...new Set(rows.map((row) => row.recipient_email?.trim().toLowerCase()).filter(Boolean))] }), "Recipient safety checks are unavailable. Nothing has been scheduled.");
   if (!protection) throw new Error("Recipient safety checks are unavailable.");
+  const defaults = await loadEngagement(database, user.id);
+  const engagement = engagementSettings({ ...defaults, enabled: defaults.enabled && input.includeEngagement !== false });
+  const origin = engagement.enabled ? engagementOrigin() : null;
   const batchItems: { recipient_email: string; template_id: string }[] = [];
   const mapped = new Set(placeholderMappings.map((mapping) => mapping.placeholder));
   const items = rows.map((row) => {
-    const email = prepareRowEmail({ row, dataset, columns, placeholderMappings, templates, rules, signatureFields });
+    const email = prepareRowEmail({ row, dataset, columns, placeholderMappings, templates, rules, signatureFields, engagement });
     const readiness = checkEmailReadiness({ row, email, mapped, policy: input.duplicatePolicy, batchItems, history: protection.history ?? [], suppressions: protection.suppressed ?? [], uncertain: protection.uncertain ?? [], scheduled: protection.scheduled ?? [] });
     if (readiness.status === "ready" && email.template) batchItems.push({ recipient_email: row.recipient_email!, template_id: email.template.id });
-    return { row_id: row.id, row_number: row.row_number, recipient_email: row.recipient_email?.trim() ?? "", template_id: email.template?.id ?? "", template_name: email.template?.name ?? "Not resolved", subject: email.subject, html_body: email.htmlBody, plain_text_body: email.plainTextBody, ...readiness };
+    return { row_id: row.id, row_number: row.row_number, recipient_email: row.recipient_email?.trim() ?? "", template_id: email.template?.id ?? "", template_name: email.template?.name ?? "Not resolved", subject: email.subject, html_body: live ? email.htmlBody : email.htmlBody.replaceAll(ENGAGEMENT_PREVIEW_URL, engagement.destination.replaceAll("&", "&amp;").replaceAll('"', "&quot;")), plain_text_body: live ? email.plainTextBody : email.plainTextBody.replaceAll(ENGAGEMENT_PREVIEW_URL, engagement.destination), ...(engagement.enabled && live ? { engagement_snapshot: { ...engagement, origin } } : {}), ...readiness };
   });
   const ready = items.filter((item) => item.status === "ready");
   if (new TextEncoder().encode(JSON.stringify(ready)).byteLength > 1000000) throw new Error("These email snapshots exceed the 1 MB schedule limit. Choose fewer recipients.");

@@ -1,5 +1,11 @@
+import { HistoryTable } from "@/components/history/history-table";
+import { createHistoryPreview } from "@/lib/ui-preview/history";
 import { createRoot } from "react-dom/client";
 import { ScheduledMailHub } from "@/components/scheduling/scheduled-mail-hub";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { EngagementWorkspace } from "@/components/engagement/engagement-workspace";
+import { EngagementSettings } from "@/components/engagement/engagement-settings";
 import "@/app/globals.css";
-createRoot(document.getElementById("root")!).render(<><header className="flex items-center justify-between border-b p-3 text-xs"><span>Isolated component test — no production connection or real sending</span><ThemeToggle /></header><ScheduledMailHub /></>);
+const history = createHistoryPreview().map((row, index) => ({ ...row, sending_method: index % 2 ? "manual" as const : "scheduled" as const }));
+const content = window.location.pathname === "/history" ? <main className="page-shell"><h1 className="page-title mb-6">Email history</h1><HistoryTable rows={history} /></main> : window.location.pathname === "/engagement-settings" ? <main className="page-shell"><EngagementSettings /></main> : window.location.pathname === "/engagement" ? <main className="page-shell"><h1 className="page-title mb-6">Email engagement</h1><EngagementWorkspace /></main> : <ScheduledMailHub />;
+createRoot(document.getElementById("root")!).render(<><header className="flex items-center justify-between border-b p-3 text-xs"><span>Isolated component test — no production connection or real sending</span><ThemeToggle /></header>{content}</>);

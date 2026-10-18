@@ -9,6 +9,7 @@ export interface ScheduledBatch {
   reason: string | null; created_at: string; updated_at: string; completed_at: string | null;
 }
 export interface ScheduledItem {
+  engagement_snapshot?: { enabled?: boolean; origin?: string } | null;
   id: string; batch_id: string; user_id: string; send_run_item_id: string; dataset_row_id: string | null;
   recipient_email: string; template_id: string | null; template_name: string; subject: string;
   html_body: string; plain_text_body: string; status: ScheduledItemStatus; attempts: number;

@@ -160,6 +160,9 @@ For a new project, run these files in Supabase SQL Editor in order:
 7. [`20261015_scheduled_mail.sql`](supabase/migrations/20261015_scheduled_mail.sql)
 8. [`20261016_scheduled_test_mail.sql`](supabase/migrations/20261016_scheduled_test_mail.sql)
 9. [`20261016_business_outreach_templates.sql`](supabase/migrations/20261016_business_outreach_templates.sql) — adds 15 location-independent business templates; see [template setup](docs/business-outreach-templates.md).
+10. [`20261019_email_engagement.sql`](supabase/migrations/20261019_email_engagement.sql) — campaign button, private link activity and follow-up spreadsheets (disabled until configured). Apply for this application release, then run [`engagement-maintenance.sql`](supabase/engagement-maintenance.sql) for hourly expiry cleanup. Deploy the app and redeploy the scheduler worker; see the [easy engagement setup](docs/email-engagement-setup.md).
+
+11. [`20261019_history_followups.sql`](supabase/migrations/20261019_history_followups.sql) — apply after the engagement migration. Adds follow-up spreadsheets from send-now and scheduled email history, even without link activity. Deploy the updated website; no additional worker change is needed for this migration.
 
 Enable email/password authentication, configure the Site URL and `/auth/callback` redirect, and keep email confirmation enabled in production.
 

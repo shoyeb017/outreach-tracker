@@ -4,6 +4,7 @@ import { classifySendResponse, SCHEDULE_LIMITS, seal, unseal, type ScheduledBatc
 type Connection = { id: string; user_id: string; client_id: string; authority: string; sender_email: string; microsoft_user_id: string; status: string; refresh_ciphertext: string; credential_ciphertext: string };
 class AuthorizationFailure extends Error {}
 class TemporaryFailure extends Error {}
+class EngagementPreparationFailure extends Error {}
 function checked<T>(result: { data: T; error: unknown }): T { if (result.error) throw new Error("The scheduler could not save or verify progress."); return result.data; }
 const authorityPattern = /^https:\/\/login\.microsoftonline\.com\/(common|organizations|consumers|[0-9a-f-]{36})$/i;
 export async function workerAuthorized(request: Request, expected: string) {
@@ -62,12 +63,27 @@ export async function runScheduledWorker(database: SupabaseClient, key: string, 
         }
       }
       if (Date.now() - started > 85000) break;
-      if (!checked(await database.rpc("scheduler_arm_item", { p_item: item.id, p_lease: lease }))) continue;
+      if (!checked(await database.rpc("scheduler_arm_item", { p_item: item.id, p_lease: lease, p_engagement_capable: true }))) continue;
       let status: "accepted" | "simulated" | "failed" | "uncertain" | "pending" = "simulated";
       let reason: string | null = null; let retry = 60; let hold: "reconnect_required" | "needs_attention" | undefined;
+      let htmlBody = item.html_body;
+      if (batch.live_enabled && item.engagement_snapshot?.enabled) {
+        try {
+          const result = await database.rpc("engagement_prepare_send", { p_item: item.send_run_item_id, p_origin: item.engagement_snapshot.origin ?? "" });
+          if (result.error) throw new EngagementPreparationFailure(result.error.code === "P0001" ? result.error.message : "Check engagement setup and storage limits.");
+          const tracked = result.data;
+          if (!tracked?.htmlBody) throw new Error("Missing tracked message.");
+          htmlBody = tracked.htmlBody;
+        } catch (error) {
+          const detail = error instanceof EngagementPreparationFailure ? error.message : "Check engagement setup and storage limits.";
+          checked(await database.rpc("scheduler_finish_item", { p_item: item.id, p_lease: lease, p_status: "failed", p_reason: `No Microsoft send was attempted. Engagement preparation failed: ${detail}`, p_retry_seconds: 60 }));
+          checked(await database.rpc("scheduler_hold_batch", { p_batch: batch.id, p_lease: lease, p_status: "needs_attention", p_reason: `Engagement preparation failed before sending: ${detail}` }));
+          processed++; continue;
+        }
+      }
       if (batch.live_enabled) {
         try {
-          const response = await fetcher("https://graph.microsoft.com/v1.0/me/sendMail", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "client-request-id": item.id }, body: JSON.stringify({ message: { subject: item.subject, body: { contentType: "HTML", content: item.html_body }, toRecipients: [{ emailAddress: { address: item.recipient_email } }] }, saveToSentItems: true }), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000) });
+          const response = await fetcher("https://graph.microsoft.com/v1.0/me/sendMail", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", "client-request-id": item.id }, body: JSON.stringify({ message: { subject: item.subject, body: { contentType: "HTML", content: htmlBody }, toRecipients: [{ emailAddress: { address: item.recipient_email } }] }, saveToSentItems: true }), cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000) });
           const outcome = classifySendResponse(response.status);
           if (outcome === "accepted") status = "accepted";
           else if (outcome === "retry") {

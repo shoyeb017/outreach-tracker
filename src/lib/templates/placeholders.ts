@@ -40,8 +40,8 @@ export function resolvePlaceholders(input: string, context: Record<string, unkno
 
 export function sanitizeEmailHtml(html: string): string {
   return sanitizeHtml(html, {
-    allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "a", "span", "div", "img"],
-    allowedAttributes: { "*": ["style"], a: ["href", "target", "rel"], img: ["src", "alt", "width", "height"] },
+    allowedTags: ["p", "br", "strong", "b", "em", "i", "u", "s", "ul", "ol", "li", "blockquote", "h1", "h2", "h3", "a", "span", "div", "img", "table", "tbody", "tr", "td"],
+    allowedAttributes: { "*": ["style"], a: ["href", "target", "rel"], img: ["src", "alt", "width", "height"], table: ["role", "width", "cellpadding", "cellspacing", "border"], td: ["align", "bgcolor", "width"] },
     allowedSchemes: ["https", "http", "mailto", "tel"],
     allowedSchemesByTag: { img: ["https"] },
     allowProtocolRelative: false,

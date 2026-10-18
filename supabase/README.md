@@ -20,6 +20,8 @@ Next apply `migrations/20261009_admin_controls.sql` before deploying the account
 
 ## Auth configuration
 
+For email engagement, apply `migrations/20261019_email_engagement.sql` after scheduled-test-mail, then run `engagement-maintenance.sql` for hourly expiry cleanup. Deploy the website **and redeploy the scheduled-mail-worker**. See [easy engagement setup](../docs/email-engagement-setup.md). New tables and privileged RPCs are service-only: do not grant browser access. Link tracking needs no new Microsoft scope. Tokens are reserved only for claimed real sends; test/practice and previews never create recipient activity. The migration sends no email and leaves button insertion disabled until each user saves Settings.
+
 For scheduled sending, apply `migrations/20261015_scheduled_mail.sql` **after** the account-controls migration. This migration starts globally paused and does not activate Cron. Follow [scheduled-mail setup](../docs/scheduled-mail-setup.md) for Microsoft Web authorization, encryption, Edge Function deployment, Vault, and the separate optional `schedule-worker-cron.sql` activation. Never put worker or refresh-token credentials in a browser-readable table. No separate backend host is needed.
 
 Then apply `migrations/20261016_scheduled_test_mail.sql` for manual-recipient scheduled dummy emails. It keeps tests in the same queue/history with explicit test provenance, rather than creating fake spreadsheets/templates. Existing worker safety checks remain in place; test creation is service-only, capped at five per user per UTC day, and requires real-sending/background authorization. It does not create another Cron job or send mail during migration.
@@ -116,3 +118,5 @@ ADMIN_LOGIN_PASSWORD=
 The protected server endpoints require the service-role key for security limits, administrator settings, and audit records. Never prefix it with `NEXT_PUBLIC_`, expose it in client code, or commit actual credentials. The public key must be an anon/publishable key, not a secret/service-role key. Product branding is built into AUTMAIL; `NEXT_PUBLIC_PRODUCT_NAME` is no longer used.
 
 Set the admin email/password to sign in through the shared `/login` page. No hash script or separate admin signup is required. Keep normal-user email confirmation enabled. Restart locally or redeploy after changing environment settings.
+
+Email history follow-ups: after applying `20261019_email_engagement.sql`, run `migrations/20261019_history_followups.sql` once. It adds the service-only atomic/idempotent follow-up RPC, private confirmation records and spreadsheet provenance. It sends no mail, grants no browser access, and needs no new secret or scheduler change. Deploy the updated website afterwards. See [the setup guide](../docs/email-engagement-setup.md).

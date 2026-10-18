@@ -8,9 +8,9 @@ const key = Buffer.alloc(32, 1).toString("base64");
 const item = { id: "item", user_id: "owner", recipient_email: "reader@example.com", subject: "Frozen subject", html_body: "<p>Frozen body</p>", attempts: 0 };
 let connection: Record<string, unknown>;
 beforeEach(async () => { connection = { id: "connection", user_id: "owner", status: "connected", client_id: "11111111-1111-4111-8111-111111111111", authority: "https://login.microsoftonline.com/common", sender_email: "sender@example.com", microsoft_user_id: "ms-user", refresh_ciphertext: await seal("fixture-refresh", key, "owner:refresh"), credential_ciphertext: await seal("fixture-credential", key, "owner:credential") }; });
-function database(live = true, attempts = 0, arm = true, test = false) {
-  const queue = [{ batch: { id: "batch", user_id: "owner", connection_id: "connection", live_enabled: live, kind: test ? "test" : "dataset", dataset_id: test ? null : "dataset" }, item: { ...item, attempts, ...(test ? { dataset_row_id: null, template_id: null, subject: SCHEDULE_TEST_MESSAGE.subject, html_body: SCHEDULE_TEST_MESSAGE.html } : {}) } }];
-  const rpc = vi.fn(async (name: string) => ({ data: name === "scheduler_next_item" ? queue.shift() ?? null : name === "scheduler_arm_item" ? arm : true, error: null }));
+function database(live = true, attempts = 0, arm = true, test = false, engagement: boolean | "fail" = false) {
+  const queue = [{ batch: { id: "batch", user_id: "owner", connection_id: "connection", live_enabled: live, kind: test ? "test" : "dataset", dataset_id: test ? null : "dataset" }, item: { ...item, attempts, ...(engagement ? { send_run_item_id:"run-item",engagement_snapshot:{enabled:true,origin:"https://autmail.vercel.app"} } : {}), ...(test ? { dataset_row_id: null, template_id: null, subject: SCHEDULE_TEST_MESSAGE.subject, html_body: SCHEDULE_TEST_MESSAGE.html } : {}) } }];
+  const rpc = vi.fn(async (name: string) => ({ data: name === "scheduler_next_item" ? queue.shift() ?? null : name === "scheduler_arm_item" ? arm : name === "engagement_prepare_send" ? {htmlBody:"<p>Tracked body</p>"} : true, error: name === "engagement_prepare_send" && engagement === "fail" ? {message:"setup unavailable"} : null }));
   const chain = { select: vi.fn(), eq: vi.fn(), update: vi.fn(), maybeSingle: vi.fn(async () => ({ data: connection, error: null })), then: (resolve: (value: { data: null; error: null }) => unknown) => Promise.resolve({ data: null, error: null }).then(resolve) };
   chain.select.mockReturnValue(chain); chain.eq.mockReturnValue(chain); chain.update.mockReturnValue(chain);
   const from = vi.fn(() => chain);
@@ -20,6 +20,15 @@ function graph(send: Response | Error = new Response(null, { status: 202 }), wro
   return vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({ access_token: "fixture-access", refresh_token: "rotated-fixture", scope: "User.Read Mail.Send" })).mockResolvedValueOnce(Response.json({ id: wrongSender ? "wrong-ms-user" : "ms-user", mail: "sender@example.com" })).mockImplementationOnce(async () => { if (send instanceof Error) throw send; return send; });
 }
 describe("scheduled worker (no real Microsoft calls)", () => {
+  it("prepares a frozen engagement link only after arming and sends the returned final body",async()=>{
+    const db=database(true,0,true,false,true),fetcher=graph();await runScheduledWorker(db.client,key,fetcher);
+    expect(db.rpc).toHaveBeenCalledWith("engagement_prepare_send",{p_item:"run-item",p_origin:"https://autmail.vercel.app"});
+    expect(JSON.parse(String(fetcher.mock.calls[2][1]?.body)).message.body.content).toBe("<p>Tracked body</p>");
+  });
+  it("does not contact Graph send when engagement preparation fails",async()=>{
+    const db=database(true,0,true,false,"fail"),fetcher=graph();await runScheduledWorker(db.client,key,fetcher);expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(db.rpc).toHaveBeenCalledWith("scheduler_finish_item",expect.objectContaining({p_status:"failed",p_reason:expect.stringContaining("No Microsoft send was attempted")}));
+  });
   it("uses the same authenticated worker for standalone tests with no spreadsheet/template", async () => {
     const db=database(true,0,true,true), fetcher=graph(); await runScheduledWorker(db.client,key,fetcher);
     expect(fetcher).toHaveBeenCalledTimes(3);

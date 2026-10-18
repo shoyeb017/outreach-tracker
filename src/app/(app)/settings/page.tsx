@@ -7,6 +7,7 @@ import { DataPrivacySettings } from "@/components/settings/data-privacy-settings
 import { SettingsTabs } from "@/components/settings/settings-tabs";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { privilegedDatabase } from "@/lib/admin/server";
+import { EngagementSettings } from "@/components/engagement/engagement-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function SettingsPage() {
       <SettingsTabs panels={{
         microsoft: <MicrosoftSettings integration={integration.data} defaults={microsoftDefaults} configurations={microsoftConfigurations} setupError={microsoftSetupError} />,
         signature: <SignatureBuilder initialFields={fields.data ?? []} microsoftEmail={integration.data?.connected_email} />,
+        engagement: <EngagementSettings fields={fields.data ?? []} integration={integration.data} />,
         sending: <SendingSettings preferences={preferences.data ?? {}} />,
         account: <ProfileSettings profile={profile.data ?? {}} />,
         privacy: <DataPrivacySettings initialSuppressions={suppressions.data ?? []} />,
