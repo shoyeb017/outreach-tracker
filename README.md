@@ -20,7 +20,7 @@ You can also read your **Inbox, Sent, Drafts, and Junk email** or **compose a si
 
 ## What you can do
 
-- **Import Excel or CSV:** select a worksheet, preview your rows, and choose the recipient email column.
+- **Import spreadsheets:** Excel (.xlsx/.xls/.xlsm/.xlsb), OpenDocument (.ods/.fods), CSV, TSV or delimited TXT. Choose a worksheet before setup; imports are named from the file and worksheet.
 - **Choose the right message:** use one template for everyone or match different templates to an Industry or other spreadsheet column.
 - **Personalize any supported field:** type `{{company_name}}`, `{{first_name}}`, or your own placeholder and connect it to a column.
 - **Build reusable templates:** start from 23 industry templates, make your own copies, and edit, archive, restore, or delete personal templates.
@@ -41,7 +41,7 @@ Recipients can use **any email provider**, including Gmail. Connecting a Microso
 
 ## How it works
 
-1. **Upload your spreadsheet.** Choose an Excel/CSV file and, for Excel, the worksheet to use.
+1. **Upload your spreadsheet.** Choose a supported spreadsheet file. If it contains several worksheets, pick the one to import. A single worksheet is selected automatically.
 2. **Choose where emails go.** Select the column containing recipient email addresses. Check valid, missing, and invalid addresses.
 3. **Choose the email templates.** Use one message for all rows, or a column such as Industry to select different messages. Review unmatched or ambiguous values rather than guessing.
 4. **Connect personalization fields.** For every placeholder used in the templates, choose the spreadsheet column supplying its value.

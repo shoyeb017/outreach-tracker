@@ -37,7 +37,7 @@ export default async function HomePage() {
     <section className="landing-inner landing-section" data-reveal>
       <p className="eyebrow">How it works</p><h2 className="mt-3 text-[clamp(1.375rem,3vw,1.875rem)] font-semibold leading-tight">Three things. One clear workflow.</h2>
       <div className="feature-grid stagger-grid mt-7">{[
-        { Icon: FileSpreadsheet, title: "Bring your list", copy: "Upload Excel or CSV. Keep your column names and choose the recipient email column." },
+        { Icon: FileSpreadsheet, title: "Bring your list", copy: "Upload Excel, OpenDocument or CSV/TSV. Choose a worksheet, keep your column names, and select the recipient email column." },
         { Icon: Route, title: "Make it personal", copy: "Choose a template and connect its fields to your spreadsheet. Preview each recipient’s message." },
         { Icon: ShieldCheck, title: "Send with control", copy: "Practice first. Connect Microsoft, review your recipients, and confirm before sending real mail." },
       ].map(({ Icon, title, copy }) => <div key={title} className="surface-card feature-card border"><span className="feature-icon"><Icon size={24} strokeWidth={1.7} /></span><h3 className="mt-5 text-lg font-semibold">{title}</h3><p className="mt-3 leading-7 text-[var(--muted-foreground)]">{copy}</p></div>)}</div>

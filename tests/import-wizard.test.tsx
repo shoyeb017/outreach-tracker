@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ImportWizard } from "@/components/spreadsheet/import-wizard";
 import type { DatasetColumn, DatasetPlaceholderMapping, DatasetRow, EmailTemplate } from "@/types";
-import { parseSpreadsheetFile, type ParsedSheet } from "@/lib/spreadsheet/parser";
+import { inspectSpreadsheetFile, parseSpreadsheetFile, type ParsedSheet } from "@/lib/spreadsheet/parser";
 import { prepareRowEmail } from "@/lib/email/render";
 
 const mocks = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn(), database: vi.fn() }));
@@ -10,21 +10,63 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push, refres
 vi.mock("@/lib/supabase/client", () => ({ getSupabaseBrowserClient: mocks.database }));
 vi.mock("@/lib/spreadsheet/parser", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/spreadsheet/parser")>();
-  return { ...actual, parseSpreadsheetFile: vi.fn().mockResolvedValue({ fileName: "contacts.csv", selectedSheet: "Contacts", sheetNames: ["Contacts"], columns: [{ originalLabel: "Public Email", slug: "public_email", index: 0 }, { originalLabel: "Business Name", slug: "business_name", index: 1 }], rows: [{ "Public Email": "contact@example.com", "Business Name": "Northstar Labs" }], previewRows: [{ "Public Email": "contact@example.com", "Business Name": "Northstar Labs" }] }) };
+  return { ...actual, inspectSpreadsheetFile: vi.fn().mockResolvedValue({ fileName: "contacts.csv", sheetNames: ["Contacts"] }), parseSpreadsheetFile: vi.fn().mockResolvedValue({ fileName: "contacts.csv", selectedSheet: "Contacts", sheetNames: ["Contacts"], columns: [{ originalLabel: "Public Email", slug: "public_email", index: 0 }, { originalLabel: "Business Name", slug: "business_name", index: 1 }], rows: [{ "Public Email": "contact@example.com", "Business Name": "Northstar Labs" }], previewRows: [{ "Public Email": "contact@example.com", "Business Name": "Northstar Labs" }] }) };
 });
 afterEach(cleanup);
 const parsedSheet: ParsedSheet = { fileName: "contacts.csv", selectedSheet: "Contacts", sheetNames: ["Contacts"], columns: [{ originalLabel: "Public Email", slug: "public_email", index: 0 }, { originalLabel: "Business Name", slug: "business_name", index: 1 }], rows: [{ "Public Email": "contact@example.com", "Business Name": "Northstar Labs" }], previewRows: [{ "Public Email": "contact@example.com", "Business Name": "Northstar Labs" }], analysis: { totalRows: 1, potentialEmails: 1, missingValues: 0, duplicateRows: 0, invalidEmails: 0 } };
-beforeEach(() => { vi.clearAllMocks(); vi.mocked(parseSpreadsheetFile).mockResolvedValue(parsedSheet); });
+beforeEach(() => { vi.clearAllMocks(); vi.mocked(parseSpreadsheetFile).mockResolvedValue(parsedSheet); vi.mocked(inspectSpreadsheetFile).mockResolvedValue({ fileName: "contacts.csv", sheetNames: ["Contacts"] }); });
 const template = { id: "template", name: "Introduction", subject_template: "Hi {{company_name}}", html_body: "<p>Hi {{company_name}}</p>", plain_text_body: null, is_active: true, is_archived: false } as EmailTemplate;
 
 describe("first-time spreadsheet setup", () => {
+  it("lists worksheets before parsing any rows, requires a deliberate selection and suggests the combined name", async () => {
+    vi.mocked(inspectSpreadsheetFile).mockResolvedValue({ fileName: "contacts.xlsx", sheetNames: ["Empty summary", "Partners"] });
+    vi.mocked(parseSpreadsheetFile).mockResolvedValue({ ...parsedSheet, fileName: "contacts.xlsx", selectedSheet: "Partners", sheetNames: ["Empty summary", "Partners"] });
+    render(<ImportWizard templates={[template]} />);
+    fireEvent.change(screen.getByLabelText("Choose a spreadsheet file"), { target: { files: [new File(["mock"], "contacts.xlsx")] } });
+    await screen.findByRole("heading", { name: "Choose the worksheet to import" });
+    expect(parseSpreadsheetFile).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Worksheet")).toHaveValue("");
+    expect(screen.getByRole("button", { name: /Use this worksheet/ })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Worksheet"), { target: { value: "Partners" } });
+    fireEvent.click(screen.getByRole("button", { name: /Use this worksheet/ }));
+    await screen.findByLabelText("Which column contains the email address we should send to?");
+    expect(parseSpreadsheetFile).toHaveBeenCalledWith(expect.any(File), "Partners");
+    expect(screen.getByText(/Worksheet: Partners/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.change(screen.getByLabelText("Email template for everyone"), { target: { value: "template" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByLabelText("Spreadsheet name")).toHaveValue("contacts — Partners");
+  });
+  it("keeps the sheet picker usable after an empty worksheet and resets mappings when switching", async () => {
+    const names = ["Summary", "Contacts", "Other"];
+    vi.mocked(inspectSpreadsheetFile).mockResolvedValue({ fileName: "book.ods", sheetNames: names });
+    vi.mocked(parseSpreadsheetFile).mockImplementation(async (_file, sheet) => sheet === "Summary" ? { ...parsedSheet, rows: [], previewRows: [] } : sheet === "Other" ? { ...parsedSheet, fileName: "book.ods", sheetNames: names, selectedSheet: "Other", columns: [{ originalLabel: "Partner Email", slug: "partner_email", index: 0 }], rows: [{ "Partner Email": "other@example.com" }], previewRows: [{ "Partner Email": "other@example.com" }] } : { ...parsedSheet, fileName: "book.ods", sheetNames: names });
+    render(<ImportWizard templates={[template]} />);
+    fireEvent.change(screen.getByLabelText("Choose a spreadsheet file"), { target: { files: [new File(["mock"], "book.ods")] } });
+    await screen.findByLabelText("Worksheet");
+    fireEvent.change(screen.getByLabelText("Worksheet"), { target: { value: "Summary" } });
+    fireEvent.click(screen.getByRole("button", { name: /Use this worksheet/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("no recipient rows");
+    fireEvent.change(screen.getByLabelText("Worksheet"), { target: { value: "Contacts" } });
+    fireEvent.click(screen.getByRole("button", { name: /Use this worksheet/ }));
+    await screen.findByLabelText("Which column contains the email address we should send to?");
+    expect(screen.getByLabelText("Which column contains the email address we should send to?")).toHaveValue("Public Email");
+    fireEvent.click(screen.getByRole("button", { name: "Change worksheet" }));
+    fireEvent.change(screen.getByLabelText("Worksheet"), { target: { value: "Other" } });
+    fireEvent.click(screen.getByRole("button", { name: /Use this worksheet/ }));
+    await waitFor(() => expect(screen.getByText(/Worksheet: Other/)).toBeInTheDocument());
+    expect(screen.getByLabelText("Which column contains the email address we should send to?")).toHaveValue("");
+    expect(screen.queryByRole("option", { name: "Public Email" })).not.toBeInTheDocument();
+  });
+
   async function upload() {
-    fireEvent.change(screen.getByLabelText("Choose an Excel or CSV file"), { target: { files: [new File(["mock"], "contacts.csv")] } });
+    fireEvent.change(screen.getByLabelText("Choose a spreadsheet file"), { target: { files: [new File(["mock"], "contacts.csv")] } });
     await screen.findByLabelText("Which column contains the email address we should send to?");
   }
   it("uses an icon file-picker button and preserves the selected file name on Back", async () => {
     render(<ImportWizard templates={[template]} />);
-    const input = screen.getByLabelText("Choose an Excel or CSV file");
+    const input = screen.getByLabelText("Choose a spreadsheet file");
     const click = vi.spyOn(input, "click");
     fireEvent.click(screen.getByRole("button", { name: "Choose file" }));
     expect(click).toHaveBeenCalledOnce();
@@ -168,7 +210,7 @@ describe("first-time spreadsheet setup", () => {
   });
   it("keeps email and template choices when going back, and explains personalization with real values", async () => {
     render(<ImportWizard templates={[template]} />);
-    fireEvent.change(screen.getByLabelText("Choose an Excel or CSV file"), { target: { files: [new File(["mock"], "contacts.csv", { type: "text/csv" })] } });
+    fireEvent.change(screen.getByLabelText("Choose a spreadsheet file"), { target: { files: [new File(["mock"], "contacts.csv", { type: "text/csv" })] } });
     await waitFor(() => expect(screen.getByLabelText("Which column contains the email address we should send to?")).toHaveValue("Public Email"));
     expect(screen.getByText("1 valid")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -183,7 +225,7 @@ describe("first-time spreadsheet setup", () => {
   });
   it("announces a missing recipient column before continuing", async () => {
     render(<ImportWizard templates={[template]} />);
-    fireEvent.change(screen.getByLabelText("Choose an Excel or CSV file"), { target: { files: [new File(["mock"], "contacts.csv")] } });
+    fireEvent.change(screen.getByLabelText("Choose a spreadsheet file"), { target: { files: [new File(["mock"], "contacts.csv")] } });
     await screen.findByLabelText("Which column contains the email address we should send to?");
     fireEvent.change(screen.getByLabelText("Which column contains the email address we should send to?"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
@@ -217,7 +259,7 @@ describe("first-time spreadsheet setup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     fireEvent.click(screen.getByRole("button", { name: "Save and select recipients" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/datasets/new-dataset?tab=recipients"));
-    expect(writes.datasets).toMatchObject({ subject_strategy: strategy, fallback_template_id: "template" });
+    expect(writes.datasets).toMatchObject({ name: "contacts — Contacts", source_file_name: "contacts.csv", source_sheet_name: "Contacts", subject_strategy: strategy, fallback_template_id: "template" });
     expect(database.storage.from).not.toHaveBeenCalled();
     expect(database.from).not.toHaveBeenCalledWith("column_mapping_profiles");
     const columns = (writes.dataset_columns as Record<string, unknown>[]).map((column, index) => ({ ...column, id: savedColumns[index].id })) as unknown as DatasetColumn[];

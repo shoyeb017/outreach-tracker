@@ -59,7 +59,7 @@ for (const width of [390, 1280]) {
     // Exercise a control first to ensure hydration before choosing the file.
     await page.getByRole("button", { name: /Switch to .* mode/ }).click();
     const company = "VeryLongInternationalCompanyNameWithoutSpaces".repeat(4);
-    await page.getByLabel("Choose an Excel or CSV file").setInputFiles({ name: "layout-preview.csv", mimeType: "text/csv", buffer: Buffer.from(`Business Name,Public Email,Industry\n${company},international.partnerships@example.com,Technology & Software\n`) });
+    await page.getByLabel("Choose a spreadsheet file").setInputFiles({ name: "layout-preview.csv", mimeType: "text/csv", buffer: Buffer.from(`Business Name,Public Email,Industry\n${company},international.partnerships@example.com,Technology & Software\n`) });
     await expect(page.getByLabel("Which column contains the email address we should send to?")).toHaveValue("Public Email");
     await page.getByText("Preview spreadsheet", { exact: true }).click();
     await expect(page.getByRole("table").getByText(company, { exact: true })).toBeVisible();

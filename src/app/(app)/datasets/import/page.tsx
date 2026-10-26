@@ -14,5 +14,5 @@ export default async function ImportPage() {
     if (templateResult.error || mappingResult.error) throw new Error("Could not load spreadsheet setup. Please try again.");
     templates = templateResult.data ?? []; mappingProfiles = mappingResult.data ?? [];
   }
-  return <main className="page-shell"><PageHeader eyebrow="Spreadsheets" title="New spreadsheet" description="Upload your file, choose the recipient email column, and set up your templates. No emails are sent here." /><ImportWizard templates={templates} mappingProfiles={mappingProfiles} /></main>;
+  return <main className="page-shell"><PageHeader eyebrow="Spreadsheets" title="New spreadsheet" description="Choose your file and worksheet, connect the recipient email column, and set up your templates. No emails are sent here." /><ImportWizard templates={templates} mappingProfiles={mappingProfiles} /></main>;
 }

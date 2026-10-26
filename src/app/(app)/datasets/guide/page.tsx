@@ -13,7 +13,7 @@ export default function SpreadsheetGuidePage() {
     <PageHeader eyebrow="Quick guide" title="Your first outreach in five steps" description="You only need a spreadsheet and an email template. Start in practice mode; connect Microsoft later." actions={<Link href="/datasets/import" className="inline-flex items-center gap-2 rounded-lg border bg-[var(--card)] px-4 py-3 text-sm font-semibold"><ArrowLeft size={15} />Back to upload</Link>} />
     <div className="grid gap-6 lg:grid-cols-[1fr_.8fr]">
       <Card><CardHeader><CardTitle>Follow this simple path</CardTitle></CardHeader><CardContent><ol className="space-y-5">{[
-        ["Upload your spreadsheet", "Choose an Excel or CSV file (up to 15 MB and 10,000 rows per worksheet). Check the worksheet and preview."],
+        ["Upload your spreadsheet", "Choose Excel, OpenDocument, CSV, TSV or delimited TXT (up to 15 MB, 10,000 rows and 500 columns per worksheet). If the file has multiple worksheets, select one first. The suggested name includes the file and worksheet."],
         ["Choose recipient emails", "Select Public Email, or whichever column contains the addresses to send to. Missing or invalid addresses are blocked."],
         ["Choose email templates", "Use one message for everyone, or choose a column such as Industry or Business type for different messages. Suggestions recognize business phrases within location text. Review each suggestion; choose a default or skip unmatched values."],
         ["Personalize the email", "A field like {{company_name}} is replaced by a spreadsheet value. Connect it to Business Name. Any imported column can supply any field; only {{signature}} comes from Settings."],

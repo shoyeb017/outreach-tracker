@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { mapImportedRow, parseSpreadsheetFile, type ParsedSheet } from "@/lib/spreadsheet/parser";
+import { IMPORT_ACCEPT, IMPORT_FORMAT_LABEL, inspectSpreadsheetFile, mapImportedRow, parseSpreadsheetFile, suggestedSpreadsheetName, type WorkbookInfo, type ParsedSheet } from "@/lib/spreadsheet/parser";
 import { dataPlaceholdersForTemplates } from "@/lib/templates/dataset-mapping";
 import { groupRoutingValues, normalizeRoutingValue, suggestTemplate, suggestTemplateMatch } from "@/lib/templates/routing";
 import type { EmailTemplate, SubjectStrategy } from "@/types";
@@ -48,6 +48,9 @@ function suggestPlaceholderColumn(placeholder: string, parsed: ParsedSheet, mapp
 export function ImportWizard({ templates, mappingProfiles = [] }: { templates: EmailTemplate[]; mappingProfiles?: MappingProfile[] }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
+  const reading = useRef(false);
+  const [workbook, setWorkbook] = useState<WorkbookInfo | null>(null);
+  const [sheetChoice, setSheetChoice] = useState("");
   const [step, setStep] = useState(0); const [file, setFile] = useState<File | null>(null); const [parsed, setParsed] = useState<ParsedSheet | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({}); const [routingColumn, setRoutingColumn] = useState("");
   const [templateMode, setTemplateMode] = useState<"single" | "column">("single");
@@ -99,21 +102,30 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     return "";
   }
 
+  function acceptSheet(result: ParsedSheet, selected: File) {
+    if (!result.rows.length) throw new Error("This worksheet has no recipient rows. Choose another worksheet with a header row and at least one recipient.");
+    const previousName = parsed ? suggestedSpreadsheetName(parsed.fileName, parsed.selectedSheet) : "";
+    setDatasetName(current => !current || current === previousName ? suggestedSpreadsheetName(selected.name, result.selectedSheet) : current);
+    setParsed(result); setSheetChoice(result.selectedSheet); setMapping(autoMapping(result.columns));
+    setRoutingColumn(""); setRouteMap({}); setPlaceholderMap({}); setIssue(""); setFallbackTemplate(""); setTemplateMode("single"); setSubjectStrategy("template"); setStep(1);
+  }
   async function chooseFile(selected?: File) {
-    if (!selected || pending) return;
-    setPending(true);
+    if (!selected || reading.current) return;
+    reading.current = true; setPending(true); setIssue("");
     try {
-      const result = await parseSpreadsheetFile(selected);
-      if (!result.rows.length) throw new Error("This worksheet has no recipient rows. Choose a file with headers and at least one row.");
-      setRoutingColumn(""); setRouteMap({}); setPlaceholderMap({}); setIssue(""); setFallbackTemplate(""); setTemplateMode("single"); setSubjectStrategy("template"); setFile(selected); setParsed(result); setMapping(autoMapping(result.columns)); setDatasetName(selected.name.replace(/\.(xlsx?|csv)$/i, "")); setStep(1);
-    } catch (error) { setIssue(error instanceof Error ? error.message : "Could not read this file. Try another Excel or CSV file."); }
-    finally { setPending(false); }
+      const info = await inspectSpreadsheetFile(selected);
+      setWorkbook(info); setFile(selected); setParsed(null); setDatasetName(""); setSheetChoice(info.sheetNames.length === 1 ? info.sheetNames[0] : ""); setStep(0);
+      if (info.sheetNames.length === 1) acceptSheet(await parseSpreadsheetFile(selected, info.sheetNames[0]), selected);
+    } catch (error) { setIssue(error instanceof Error ? error.message : "Could not read this spreadsheet. Try exporting it as Excel or CSV."); }
+    finally { reading.current = false; setPending(false); }
   }
   async function changeSheet(sheet: string) {
-    if (!file) return; setPending(true);
-    try { const result = await parseSpreadsheetFile(file, sheet); setParsed(result); setMapping(autoMapping(result.columns)); setRoutingColumn(""); setRouteMap({}); setPlaceholderMap({}); }
-    catch (error) { setIssue(error instanceof Error ? error.message : "Could not read this worksheet."); }
-    finally { setPending(false); }
+    if (!file || !sheet || reading.current) return;
+    if (parsed?.selectedSheet === sheet) { setIssue(""); setStep(1); return; }
+    reading.current = true; setPending(true); setIssue("");
+    try { acceptSheet(await parseSpreadsheetFile(file, sheet), file); }
+    catch (error) { setIssue(error instanceof Error ? error.message : "Could not read this worksheet. Choose another sheet."); }
+    finally { reading.current = false; setPending(false); }
   }
   function goNext() {
     setIssue("");
@@ -205,22 +217,29 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--muted-foreground)]">Set up your spreadsheet first. Select recipients and send only after saving.</p><Badge tone="success">No emails sent during setup</Badge></div>
     <WorkflowSteps steps={steps} current={step} completed={completedSteps} disabled={steps.flatMap((_, index) => pending || index > step ? [index] : [])} onSelect={(index) => { if (!pending && index < step) { setStep(index); setIssue(""); } }} />
     {pending && step === 4 ? <Card><CardContent className="flex min-h-64 flex-col items-center justify-center gap-4" role="status"><LoaderCircle className="animate-spin" /><h2 className="font-semibold">Saving your spreadsheet…</h2><p className="text-sm text-[var(--muted-foreground)]">Keep this page open. Nothing is being emailed.</p></CardContent></Card> : <>
-    {step === 0 && parsed && <Card><CardContent className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold">{parsed.fileName}</p><p className="mt-1 text-xs text-[var(--muted-foreground)]">{parsed.selectedSheet} · {parsed.rows.length.toLocaleString()} rows · Your current choices are kept.</p></div><Button disabled={pending} onClick={() => { setStep(1); setIssue(""); }}>Continue with this file<ArrowRight size={15} /></Button></CardContent></Card>}
+    {step === 0 && parsed && sheetChoice === parsed.selectedSheet && <Card><CardContent className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold">{parsed.fileName}</p><p className="mt-1 text-xs text-[var(--muted-foreground)]">{parsed.selectedSheet} · {parsed.rows.length.toLocaleString()} rows · Your current choices are kept.</p></div><Button disabled={pending} onClick={() => { setStep(1); setIssue(""); }}>Continue with this file<ArrowRight size={15} /></Button></CardContent></Card>}
     {step === 0 && <Card><CardContent className="space-y-6 py-8 text-left">
       <div><h2 className="text-xl font-semibold">Upload your spreadsheet</h2><p className="mt-3 max-w-lg text-sm leading-6 text-[var(--muted-foreground)]">Use a spreadsheet with a header row and recipient email addresses. Next, choose the email column and templates. You do not need to connect Microsoft yet.</p></div>
       <div className="rounded-lg border border-dashed bg-[var(--surface-hover)] p-5 sm:p-6">
-        <label htmlFor="spreadsheet-file" className="block text-sm font-semibold">Choose an Excel or CSV file</label>
-        <input ref={fileInput} id="spreadsheet-file" className="sr-only" tabIndex={-1} type="file" accept=".xlsx,.xls,.csv" disabled={pending} aria-describedby="spreadsheet-file-hint" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+        <label htmlFor="spreadsheet-file" className="block text-sm font-semibold">Choose a spreadsheet file</label>
+        <input ref={fileInput} id="spreadsheet-file" className="sr-only" tabIndex={-1} type="file" accept={IMPORT_ACCEPT} disabled={pending} aria-describedby="spreadsheet-file-hint" onChange={(event) => { void chooseFile(event.target.files?.[0]); event.currentTarget.value = ""; }} />
         <div className="mt-4 flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
           <Button variant="outline" disabled={pending} onClick={() => fileInput.current?.click()} className="shrink-0">{pending ? <LoaderCircle size={18} className="animate-spin" aria-hidden="true" /> : <UploadCloud size={18} aria-hidden="true" />}{file ? "Choose another file" : "Choose file"}</Button>
-          <div className="min-w-0"><p className="break-words text-sm font-medium">{file?.name ?? "No spreadsheet selected yet"}</p><p id="spreadsheet-file-hint" className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">Excel (.xlsx, .xls) or CSV · up to 15 MB · 10,000 rows per worksheet</p></div>
+          <div className="min-w-0"><p className="break-words text-sm font-medium">{file?.name ?? "No spreadsheet selected yet"}</p><p id="spreadsheet-file-hint" className="mt-1 text-xs leading-5 text-[var(--muted-foreground)]">{IMPORT_FORMAT_LABEL} · up to 15 MB · 10,000 rows and 500 columns per worksheet</p></div>
         </div>
       </div>
+      {workbook && workbook.sheetNames.length > 1 && <section aria-labelledby="choose-worksheet-heading" className="space-y-4 rounded-lg border bg-[var(--surface-hover)] p-4 sm:p-5">
+        <div><h3 id="choose-worksheet-heading" className="text-base font-semibold">Choose the worksheet to import</h3><p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">This file contains {workbook.sheetNames.length} worksheets. Choose one below. Only that worksheet’s rows will be imported; the others stay separate.</p></div>
+        <div><Label htmlFor="import-worksheet">Worksheet</Label><Select id="import-worksheet" value={sheetChoice} disabled={pending} onChange={event => { setSheetChoice(event.target.value); setIssue(""); }}><option value="">Choose a worksheet</option>{workbook.sheetNames.map(sheet => <option key={sheet} value={sheet}>{sheet}</option>)}</Select></div>
+        {sheetChoice && <p className="break-words text-xs leading-6 text-[var(--muted-foreground)]">Suggested name: <span className="font-semibold text-[var(--foreground)]">{suggestedSpreadsheetName(workbook.fileName, sheetChoice)}</span>. You can edit it before saving.</p>}
+        <Button disabled={pending || !sheetChoice} onClick={() => void changeSheet(sheetChoice)}>{pending ? <LoaderCircle size={16} className="animate-spin" /> : <FileSpreadsheet size={16} />}Use this worksheet<ArrowRight size={15} /></Button>
+        {parsed && <p className="text-xs leading-6 text-[var(--muted-foreground)]">Switching worksheets resets email columns, template choices and personalization connections, because different worksheets can have different columns.</p>}
+      </section>}
       <Link className="inline-block text-sm font-semibold text-[var(--primary)] underline" href="/datasets/guide">Try a sample spreadsheet or see an example</Link>
       {pending && <p role="status" className="text-sm">Reading your file…</p>}
     </CardContent></Card>}
     {step === 1 && parsed && <Card><CardHeader><CardTitle>Email setup</CardTitle><p className="page-subtitle">Choose the recipient email column—the addresses your emails will go to. For example, “Public Email” supplies the To address. You will select individual rows after saving.</p></CardHeader><CardContent className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm font-semibold">{parsed.fileName} · {parsed.rows.length.toLocaleString()} rows</span>{parsed.sheetNames.length > 1 && <Select aria-label="Worksheet" className="w-60" value={parsed.selectedSheet} disabled={pending} onChange={(event) => changeSheet(event.target.value)}>{parsed.sheetNames.map((sheet) => <option key={sheet}>{sheet}</option>)}</Select>}</div>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border p-4"><div className="min-w-0 text-sm"><p className="break-words font-semibold">{parsed.fileName}</p><p className="mt-1 break-words text-xs text-[var(--muted-foreground)]">Worksheet: {parsed.selectedSheet} · {parsed.rows.length.toLocaleString()} rows{parsed.sheetNames.length === 1 ? " · Only worksheet in this file" : ""}</p></div>{parsed.sheetNames.length > 1 && <Button variant="outline" size="sm" disabled={pending} onClick={() => { setStep(0); setIssue(""); }}>Change worksheet</Button>}</div>
       {mappingProfiles.length > 0 && <div><Label htmlFor="saved-setup">Reuse a saved setup (optional)</Label><Select id="saved-setup" defaultValue="" onChange={(event) => applyMappingProfile(event.target.value)}><option value="">Start a new setup</option>{mappingProfiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}</Select></div>}
       <section aria-labelledby="recipient-emails-heading" className="space-y-3">
         <h3 id="recipient-emails-heading" className="text-sm font-semibold">Recipient emails</h3>
@@ -264,7 +283,7 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
       {requiredPlaceholders.length ? requiredPlaceholders.map((placeholder) => <div className="grid gap-3 rounded-xl border p-4 sm:grid-cols-2" key={placeholder}><div><span className="flex items-center gap-2 text-sm font-semibold"><Braces size={16} />{placeholder.replaceAll("_", " ")}</span><code className="mt-1 block text-xs text-[var(--primary)]">{`{{${placeholder}}}`}</code><p className="mt-2 text-xs text-[var(--muted-foreground)]">{selectedTemplates.filter((template) => (template.subject_template + template.html_body + template.plain_text_body).includes(placeholder)).map((template) => template.name).join(", ")}</p></div><div><Select aria-label={`Spreadsheet column for ${placeholder}`} value={placeholderMap[placeholder] ?? ""} onChange={(event) => setPlaceholderMap((current) => ({ ...current, [placeholder]: event.target.value }))}><option value="">Choose spreadsheet column</option>{columnOptions}</Select><p className="mt-2 text-xs text-[var(--muted-foreground)]">{placeholderMap[placeholder] ? `Example result: ${examples(placeholderMap[placeholder])}` : "Choose a column to continue. Blank values in individual rows can be fixed after saving."}</p></div></div>) : <div className="rounded-xl bg-[var(--muted)] p-5 text-sm">No spreadsheet fields are needed for these emails. You can continue.</div>}
     </CardContent></Card>}
     {step === 4 && parsed && <Card><CardHeader><CardTitle>Save your spreadsheet</CardTitle><p className="page-subtitle">Check your setup and save. Next, select recipient rows, preview the finished emails, and confirm a separate send.</p></CardHeader><CardContent className="space-y-5">
-      <div><Label htmlFor="spreadsheet-name">Spreadsheet name</Label><Input id="spreadsheet-name" value={datasetName} onChange={(event) => setDatasetName(event.target.value)} /></div>
+      <div><Label htmlFor="spreadsheet-name">Spreadsheet name</Label><Input id="spreadsheet-name" maxLength={200} value={datasetName} onChange={(event) => setDatasetName(event.target.value)} /></div>
       <dl className="grid gap-4 rounded-xl bg-[var(--muted)] p-5 sm:grid-cols-2">{[
         ["Source file / worksheet", parsed.fileName + " / " + parsed.selectedSheet],
         ["Imported rows", parsed.rows.length.toLocaleString()],

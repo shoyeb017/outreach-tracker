@@ -29,7 +29,7 @@ test("real CSV import suggests addresses and retains them across Back", async ({
   await page.getByRole("button", { name: "Open navigation" }).click();
   await expect(page.getByRole("dialog", { name: "Navigation" })).toBeVisible();
   await page.keyboard.press("Escape");
-  await page.getByLabel("Choose an Excel or CSV file").setInputFiles({ name: "contacts.csv", mimeType: "text/csv", buffer: Buffer.from("Business Name,Public Email,Industry\nNorthstar Labs,contact@example.com,Technology & Software\nHarbor Works,invalid,Manufacturing & Industrial\n") });
+  await page.getByLabel("Choose a spreadsheet file").setInputFiles({ name: "contacts.csv", mimeType: "text/csv", buffer: Buffer.from("Business Name,Public Email,Industry\nNorthstar Labs,contact@example.com,Technology & Software\nHarbor Works,invalid,Manufacturing & Industrial\n") });
   const column = page.getByLabel("Which column contains the email address we should send to?");
   await expect(column).toHaveValue("Public Email");
   await expect(page.getByText("1 valid", { exact: true })).toBeVisible();

@@ -1,5 +1,21 @@
 Your spreadsheet supplies the recipients and personal values. A template supplies the message. Mapping connects the two without requiring fixed spreadsheet column names.
 
+## Upload: choose your file and worksheet
+
+Supported files are Excel (`.xlsx`, `.xls`, `.xlsm`, `.xlsb`), OpenDocument (`.ods`, `.fods`), CSV, TSV and comma/tab/semicolon-delimited TXT. Google Sheets and other cloud spreadsheets should be downloaded in one of these formats first; this is a file import, not a live cloud connection. PDFs, images, document files and password-protected spreadsheets need conversion or an unprotected copy.
+
+Files can be up to **15 MB**, with up to **10,000 recipient rows and 500 columns** in the worksheet you select. Remove unused rows/columns if an inflated data range exceeds a limit. Macros are not run and formulas are not recalculated; formula cells need saved values from your spreadsheet application.
+
+After choosing a file:
+
+1. If it has multiple worksheets, AUTMAIL lists their names and asks **Choose the worksheet to import**. No worksheet is selected for you.
+2. Choose the worksheet and click **Use this worksheet**. Only its rows are imported; other worksheets are not merged.
+3. If the file has only one worksheet (including CSV/TSV), it is selected automatically.
+4. Preview the selected data and choose its recipient email column.
+5. The suggested name combines the file and worksheet, for example **Virginia contacts — Accounting firms**. You can edit this name before saving. The original file and worksheet names are always saved separately as source details.
+
+You can use **Change worksheet** to return to the picker. Keeping the same worksheet keeps your choices; switching to another resets recipient/subject columns, templates and personalization connections because its columns may differ. An empty or oversized first worksheet does not prevent choosing another worksheet. Nothing is saved or emailed during file/worksheet selection.
+
 ## Email setup: who receives the message
 
 Choose the column containing the **recipient’s email address**. This is the actual destination, not the sending mailbox, and not a template placeholder.

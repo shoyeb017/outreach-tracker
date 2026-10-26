@@ -4,7 +4,7 @@ AUTMAIL - Email Automation System helps you prepare personalized emails from a s
 
 ## 1. Prepare a small list
 
-Use Excel or CSV with a header row and one intended recipient per row. Keep your own column names. Include an email address column and the information you want to use in your message, such as company or first name.
+Use Excel, OpenDocument, CSV, TSV or delimited TXT with a header row and one intended recipient per row. If the file has several worksheets, choose one before continuing. The suggested import name includes the file and worksheet. Keep your own column names. Include an email address column and the information you want to use in your message, such as company or first name.
 
 For your first test, use a few addresses you control. Do not upload passwords, access tokens, or unrelated sensitive information.
 

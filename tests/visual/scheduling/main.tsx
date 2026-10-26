@@ -1,3 +1,5 @@
+import { ImportWizard } from "@/components/spreadsheet/import-wizard";
+import type { EmailTemplate } from "@/types";
 import { HistoryTable } from "@/components/history/history-table";
 import { createHistoryPreview } from "@/lib/ui-preview/history";
 import { createRoot } from "react-dom/client";
@@ -7,5 +9,6 @@ import { EngagementWorkspace } from "@/components/engagement/engagement-workspac
 import { EngagementSettings } from "@/components/engagement/engagement-settings";
 import "@/app/globals.css";
 const history = createHistoryPreview().map((row, index) => ({ ...row, sending_method: index % 2 ? "manual" as const : "scheduled" as const }));
-const content = window.location.pathname === "/history" ? <main className="page-shell"><h1 className="page-title mb-6">Email history</h1><HistoryTable rows={history} /></main> : window.location.pathname === "/engagement-settings" ? <main className="page-shell"><EngagementSettings /></main> : window.location.pathname === "/engagement" ? <main className="page-shell"><h1 className="page-title mb-6">Email engagement</h1><EngagementWorkspace /></main> : <ScheduledMailHub />;
+const importTemplate = { id: "11111111-1111-4111-8111-111111111111", name: "Introduction", subject_template: "Hi {{company_name}}", html_body: "<p>Hi {{company_name}}</p>", plain_text_body: null, is_active: true, is_archived: false } as EmailTemplate;
+const content = window.location.pathname === "/datasets/import" ? <main className="page-shell"><h1 className="page-title mb-6">New spreadsheet</h1><ImportWizard templates={[importTemplate]} /></main> : window.location.pathname === "/history" ? <main className="page-shell"><h1 className="page-title mb-6">Email history</h1><HistoryTable rows={history} /></main> : window.location.pathname === "/engagement-settings" ? <main className="page-shell"><EngagementSettings /></main> : window.location.pathname === "/engagement" ? <main className="page-shell"><h1 className="page-title mb-6">Email engagement</h1><EngagementWorkspace /></main> : <ScheduledMailHub />;
 createRoot(document.getElementById("root")!).render(<><header className="flex items-center justify-between border-b p-3 text-xs"><span>Isolated component test — no production connection or real sending</span><ThemeToggle /></header>{content}</>);
