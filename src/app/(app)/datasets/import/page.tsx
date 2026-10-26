@@ -9,10 +9,10 @@ export default async function ImportPage() {
   if (supabase) {
     const [templateResult, mappingResult] = await Promise.all([
       supabase.from("templates").select("*").eq("is_active", true).eq("is_archived", false).order("is_system", { ascending: false }).order("name"),
-      supabase.from("column_mapping_profiles").select("id,name,mappings,routing_key_label,routing_rules,subject_strategy").order("name"),
+      supabase.from("column_mapping_profiles").select("id,name,mappings,routing_key_label,routing_rules,subject_strategy,body_source,spreadsheet_signature").order("name"),
     ]);
     if (templateResult.error || mappingResult.error) throw new Error("Could not load spreadsheet setup. Please try again.");
     templates = templateResult.data ?? []; mappingProfiles = mappingResult.data ?? [];
   }
-  return <main className="page-shell"><PageHeader eyebrow="Spreadsheets" title="New spreadsheet" description="Choose your file and worksheet, connect the recipient email column, and set up your templates. No emails are sent here." /><ImportWizard templates={templates} mappingProfiles={mappingProfiles} /></main>;
+  return <main className="page-shell"><PageHeader eyebrow="Spreadsheets" title="New spreadsheet" description="Choose your file and worksheet, connect the recipient email column, and choose templates or a spreadsheet body column. No emails are sent here." /><ImportWizard templates={templates} mappingProfiles={mappingProfiles} /></main>;
 }

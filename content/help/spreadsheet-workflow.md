@@ -1,4 +1,4 @@
-Your spreadsheet supplies the recipients and personal values. A template supplies the message. Mapping connects the two without requiring fixed spreadsheet column names.
+Your spreadsheet supplies the recipients and personal values. Choose whether a template or a spreadsheet column supplies the message. Mapping connects your data without requiring fixed spreadsheet column names.
 
 ## Upload: choose your file and worksheet
 
@@ -22,14 +22,25 @@ Choose the column containing the **recipient’s email address**. This is the ac
 
 For example, if your spreadsheet has `Contact email`, choose that column. Check sample addresses and missing or invalid values. A company name column cannot replace an email column.
 
-In **Subject options (optional)**, choose where the email title comes from:
+Next choose **Where should the email body come from?**:
+
+- **Use email templates:** choose a saved message in the next step. Personalization fields can use any imported column.
+- **Use a spreadsheet body column:** each row already contains its own complete message. Choose separate recipient email, subject and body columns. No template is needed. Choose whether to add your saved signature; turn it off if your cells already contain a signature.
+
+Spreadsheet bodies are plain text, with their line breaks preserved. HTML code is displayed as text, not interpreted. Blank body or subject cells block that row, even if your signature is nonempty. There is no hidden template fallback. The **Email content** step shows the selected columns instead of asking for templates.
+
+Optional `{{column_key}}` fields inside a spreadsheet body resolve automatically using imported column keys; see **Personalize → Optional placeholder keys** for the exact keys. For example, a `Business Name` column usually has key `business_name`. Use `{{business_name}}` inside a message to insert that row's value. Missing values are flagged before sending. No template-field mapping is needed in this mode.
+
+If you chose templates, **Subject options (optional)** controls where the email title comes from:
 
 - **Use template subjects only:** use the subject written in each chosen template. No subject column is needed.
 - **Use spreadsheet subjects if available; otherwise use the template:** choose the spreadsheet subject column. A filled cell supplies that row's subject; a blank cell automatically uses the chosen template's subject. This column is required when you choose this option and must be different from the recipient email column.
 
 ## Choose templates: which message each row uses
 
-There are two approaches:
+This step applies only when you chose **Use email templates**. With spreadsheet bodies, it becomes **Email content**, showing your body and subject columns; there are no template choices to fill in.
+
+For templates there are two approaches:
 
 - **One template for everyone:** every included row uses the template you select. No category column is needed. Personal details can still differ for each recipient.
 - **Different templates by spreadsheet value:** choose your spreadsheet’s decision column, such as `Sector`. Connect its actual values to the templates you want them to use.
@@ -68,10 +79,16 @@ Check each recipient preview, not just the total count. Confirm:
 
 1. The destination email column and address.
 2. The routing column/value, if you used matching.
-3. The chosen template and final subject.
+3. The chosen template **or spreadsheet body column**, and the final subject.
 4. The personal values and signature.
 5. The sending mailbox and campaign mode.
 
 The **Review and confirm** window places the summary and **Cancel / Send** controls above the recipient table. Scroll inside the table to inspect more recipients; opening a preview does not send anything. In practice mode, the confirmation button says **Practice**, not Send.
 
-If you change a template or mapping, review again. See [Templates and personal fields](/help/templates-and-personalization) for reusable message examples.
+For spreadsheet bodies, duplicate protection uses **recipient + spreadsheet campaign**. Different messages to the same address in this spreadsheet are still repeats. Choose Warn or Allow only when intentional. Uncertain outcomes and active schedule reservations remain blocked regardless of that choice.
+
+Scheduled sends save the final subject and body at confirmation. Later spreadsheet edits do not rewrite an existing schedule; cancel and create a new reviewed schedule if its content needs to change. Accepted, failed and practice results appear in Email history with the content source shown. Engagement buttons work with either body source; previews and tests do not activate tracking.
+
+History and engagement follow-ups copy the source columns and data, but require a fresh email-content choice. Select templates or reselect the copied body/subject columns, update the follow-up messages, then preview and confirm. Creating a follow-up never sends mail or automatically repeats the old message.
+
+If you change an email body, template or mapping, review again. See [Templates and personal fields](/help/templates-and-personalization) for reusable message examples.

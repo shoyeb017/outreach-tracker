@@ -42,6 +42,9 @@ export interface Dataset {
   routing_column_id: string | null;
   fallback_template_id: string | null;
   subject_strategy: SubjectStrategy;
+  body_source?: "template" | "spreadsheet";
+  body_column_id?: string | null;
+  spreadsheet_signature?: boolean;
   original_file_path: string | null;
   created_at: string;
   updated_at: string;
@@ -152,7 +155,7 @@ export interface SendQueueItem {
   rowId: string;
   recipientEmail: string;
   recipientName?: string;
-  templateId: string;
+  templateId: string | null;
   subject: string;
   htmlBody: string;
   plainTextBody: string;
@@ -179,6 +182,7 @@ export interface SendRun {
 }
 
 export interface SendRunItem {
+  content_key?: string | null;
   engagement_snapshot?: { enabled?: boolean } | null;
   id: string;
   send_run_id: string;

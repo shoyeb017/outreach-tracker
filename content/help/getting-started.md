@@ -14,17 +14,17 @@ Open **Spreadsheets → New spreadsheet**. Follow the creation steps:
 
 1. **Upload:** choose the file and check that its columns look right.
 2. **Email setup:** choose the spreadsheet column containing recipient email addresses.
-3. **Choose email templates:** use one template for all rows, or select a column whose values choose different templates.
-4. **Personalize:** connect each personal field in those templates to its spreadsheet column.
+3. **Choose email content:** use templates, or choose the spreadsheet body and subject columns in Email setup. With spreadsheet bodies, this step confirms the columns and needs no template.
+4. **Personalize:** connect template fields to columns. Spreadsheet bodies use your written text directly; include your saved signature only if needed.
 5. **Save spreadsheet:** check the summary and save. Saving does not send anything.
 
 The [spreadsheet workflow guide](/help/spreadsheet-workflow) explains each decision with an example.
 
 ## 3. Select and preview
 
-Open the saved spreadsheet. Check its email setup, templates, and personalization, then **Select recipients → Review and send**.
+Open the saved spreadsheet. Check its email setup, content source, and personalization, then **Select recipients → Review and send**.
 
-Click a recipient row to read the actual subject and email body. Check the email address, chosen template, personal values, and signature. Fix blocked rows or missing values before including them.
+Click a recipient row to read the actual subject and email body. Check the email address, chosen template or body column, personal values, and signature. Fix blocked rows or missing values before including them.
 
 ## 4. Connect your sending mailbox
 

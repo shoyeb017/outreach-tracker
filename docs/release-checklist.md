@@ -66,3 +66,12 @@ Immediate Send now campaigns run in the browser: keep the tab open; navigation p
 Automated tests and builds do not verify deployed RLS, migrations, Microsoft policy, or actual delivery. Complete the staging checks before approving a production rollout. Deployment and migrations are manual; neither is performed by a GitHub push alone.
 
 For selected record removal, apply `20261019_record_deletion.sql` after history-followups before deploying. Verify single/bulk confirmation in all three sections, owner isolation, atomic mixed-invalid rejection, 500-selection bounds, filter/page behavior, protection of pending/unknown sends, retained duplicate history, independently retained engagement/schedules, and disabled links after engagement deletion. History/schedule list removal retains internal snapshots and does not reclaim their storage. Existing full workspace/account deletion remains the deliberate erasure path.
+
+## Spreadsheet email bodies (2026-10-26)
+
+- Apply `supabase/migrations/20261026_spreadsheet_email_body.sql` after all existing `20261019` migrations, before deploying this app version. See [spreadsheet body setup](spreadsheet-body-setup.md).
+- Test both sources: no-template import; switching an existing spreadsheet to/from spreadsheet bodies; distinct recipient/subject/body columns; blank cells; escaped HTML; line breaks; optional signature; exact column-key placeholders; saved setup reuse.
+- Confirm preview/test/practice/live use the same content. Exercise real sending only with explicit approval and a controlled address.
+- Verify same-campaign repeat-recipient warn/block/allow; scheduled reservations and unknown outcomes must not be bypassed. Spreadsheet-body duplicate identity is source dataset + recipient, not a hash of the message text.
+- Confirm template-free scheduled snapshots, worker acceptance/history, engagement preparation, history/engagement follow-ups, source ownership and service-only functions. Edits after schedule confirmation must not change its saved email.
+- This migration adds metadata columns and indexes; it does not add timers, change quotas, enable sending, or require new environment values. Existing scheduler workers read the updated database guards; no worker code change is required for this feature.

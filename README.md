@@ -21,7 +21,7 @@ You can also read your **Inbox, Sent, Drafts, and Junk email** or **compose a si
 ## What you can do
 
 - **Import spreadsheets:** Excel (.xlsx/.xls/.xlsm/.xlsb), OpenDocument (.ods/.fods), CSV, TSV or delimited TXT. Choose a worksheet before setup; imports are named from the file and worksheet.
-- **Choose the right message:** use one template for everyone or match different templates to an Industry or other spreadsheet column.
+- **Choose the right message:** use templates, or send complete messages from a spreadsheet body column with a separate subject column—no template required.
 - **Personalize any supported field:** type `{{company_name}}`, `{{first_name}}`, or your own placeholder and connect it to a column.
 - **Build reusable templates:** start from 23 industry templates, make your own copies, and edit, archive, restore, or delete personal templates.
 - **Create a flexible signature:** add and reorder text, links, and logos with adjustable image sizes.
@@ -43,8 +43,8 @@ Recipients can use **any email provider**, including Gmail. Connecting a Microso
 
 1. **Upload your spreadsheet.** Choose a supported spreadsheet file. If it contains several worksheets, pick the one to import. A single worksheet is selected automatically.
 2. **Choose where emails go.** Select the column containing recipient email addresses. Check valid, missing, and invalid addresses.
-3. **Choose the email templates.** Use one message for all rows, or a column such as Industry to select different messages. Review unmatched or ambiguous values rather than guessing.
-4. **Connect personalization fields.** For every placeholder used in the templates, choose the spreadsheet column supplying its value.
+3. **Choose your email content.** Use one template for all rows, select different templates by Industry, or choose a spreadsheet body column and subject column. Spreadsheet-body mode skips template selection.
+4. **Personalize.** Connect template fields to columns. Spreadsheet bodies need no template mappings; optional exact column-key placeholders are resolved per row.
 5. **Save and select recipients.** Saving does not send anything. Search/filter your rows, fix incomplete details, and choose who should receive the message.
 6. **Review and send.** Preview the finished email for any row, confirm the sender and recipients, then run a practice campaign or deliberately enable real sending.
 
@@ -165,6 +165,8 @@ For a new project, run these files in Supabase SQL Editor in order:
 11. [`20261019_history_followups.sql`](supabase/migrations/20261019_history_followups.sql) — apply after the engagement migration. Adds follow-up spreadsheets from send-now and scheduled email history, even without link activity. Deploy the updated website; no additional worker change is needed for this migration.
 
 12. [`20261019_record_deletion.sql`](supabase/migrations/20261019_record_deletion.sql) — apply after history-followups, before deploying. Adds individual/bulk removal with confirmations, protected active sends and retained duplicate-send logs.
+
+13. [`20261026_spreadsheet_email_body.sql`](supabase/migrations/20261026_spreadsheet_email_body.sql) — adds spreadsheet-body emails without templates; apply before deploying this feature. See [spreadsheet body setup](docs/spreadsheet-body-setup.md). No new environment values or Microsoft permissions are needed.
 
 Enable email/password authentication, configure the Site URL and `/auth/callback` redirect, and keep email confirmation enabled in production.
 

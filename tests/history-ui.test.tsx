@@ -35,7 +35,7 @@ describe("readable history", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create spreadsheet" }));
     await screen.findByText(/Follow-up spreadsheet created/);
     expect(requests.request).toHaveBeenCalledWith("/api/history/followup", expect.objectContaining({ method: "POST" }));
-    expect(screen.getByRole("link", { name: "Choose template and review" })).toHaveAttribute("href", "/datasets/new-sheet?tab=required-setup");
+    expect(screen.getByRole("link", { name: "Choose email content and review" })).toHaveAttribute("href", "/datasets/new-sheet?tab=required-setup");
     await waitFor(() => expect(screen.getByText("0 records selected")).toBeInTheDocument());
   });
   it("clears selection when filters change and allows removing test results without reusing them", () => {

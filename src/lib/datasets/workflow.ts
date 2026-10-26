@@ -19,12 +19,14 @@ export function datasetWorkflowState(args: {
   const activeIds = new Set(args.templates.filter((template) => template.is_active && !template.is_archived).map((template) => template.id));
   const validDefault = !!args.dataset.fallback_template_id && activeIds.has(args.dataset.fallback_template_id);
   const hasRouting = !!args.dataset.routing_column_id && args.columns.some((column) => column.id === args.dataset.routing_column_id);
-  const setup = args.columns.some((column) => column.standard_field === "recipient_email") && (hasRouting || validDefault);
-  const templates = setup && (hasRouting ? groupRoutingValues(args.routingValues).every((group) => {
+  const spreadsheet = args.dataset.body_source === "spreadsheet";
+  const spreadsheetSetup = args.columns.some(column => column.id === args.dataset.body_column_id) && args.columns.some(column => column.standard_field === "subject");
+  const setup = args.columns.some((column) => column.standard_field === "recipient_email") && (spreadsheet ? spreadsheetSetup : hasRouting || validDefault);
+  const templates = setup && (spreadsheet || (hasRouting ? groupRoutingValues(args.routingValues).every((group) => {
     const rule = args.rules.find((entry) => entry.normalized_value === group.normalized_value);
     return !!rule && (rule.action === "skip" || (rule.action === "fallback" && validDefault) || (rule.action === "template" && !!rule.template_id && activeIds.has(rule.template_id)));
-  }) : validDefault);
-  const usedTemplates = templatesUsedByDataset(args.templates, hasRouting ? args.rules : [], args.dataset.fallback_template_id);
+  }) : validDefault));
+  const usedTemplates = spreadsheet ? [] : templatesUsedByDataset(args.templates, hasRouting ? args.rules : [], args.dataset.fallback_template_id);
   const fields = dataPlaceholdersForTemplates(usedTemplates, args.dataset.subject_strategy !== "spreadsheet");
   const connected = fields.filter((field) => args.placeholderMappings.some((mapping) => mapping.placeholder === field && args.columns.some((column) => column.id === mapping.column_id))).length;
   const personalized = templates && connected === fields.length;

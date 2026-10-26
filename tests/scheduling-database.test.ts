@@ -23,7 +23,7 @@ beforeAll(async () => {
   `);
   await db.exec(readFileSync("supabase/schema.sql", "utf8"));
   await db.exec("grant select,insert,update,delete on all tables in schema public to authenticated; grant all on all tables in schema public to service_role;");
-  for (const migration of ["20261008_admin_microsoft.sql", "20261009_admin_controls.sql", "20261015_scheduled_mail.sql", "20261016_scheduled_test_mail.sql", "20261019_email_engagement.sql", "20261019_history_followups.sql", "20261019_record_deletion.sql"]) await db.exec(readFileSync(`supabase/migrations/${migration}`, "utf8"));
+  for (const migration of ["20261008_admin_microsoft.sql", "20261009_admin_controls.sql", "20261015_scheduled_mail.sql", "20261016_scheduled_test_mail.sql", "20261019_email_engagement.sql", "20261019_history_followups.sql", "20261019_record_deletion.sql", "20261026_spreadsheet_email_body.sql"]) await db.exec(readFileSync(`supabase/migrations/${migration}`, "utf8"));
 }, 60000);
 afterAll(async () => { await db?.close(); });
 beforeEach(async () => {
@@ -494,4 +494,105 @@ describe("safe individual and bulk record deletion", () => {
     await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub','${owner}',false); select set_config('request.jwt.claim.role','authenticated',false);`);
     await expect(deleteRecords("history",[crypto.randomUUID()])).rejects.toThrow(/permission denied/);
   });
+});
+
+describe("spreadsheet-body campaign storage and scheduling", () => {
+  const emailCol = "88888888-8888-4888-8888-888888888881", subjectCol = "88888888-8888-4888-8888-888888888882", bodyCol = "88888888-8888-4888-8888-888888888883";
+  async function setupColumns() {
+    await db.query("insert into public.dataset_columns(id,user_id,dataset_id,original_label,placeholder_slug,display_order) values($1,$4,$5,'Email','email',0),($2,$4,$5,'Subject','subject',1),($3,$4,$5,'Message','message',2)", [emailCol,subjectCol,bodyCol,owner,dataset]);
+    await db.query("update public.dataset_rows set data=$1::jsonb where id=$2", [JSON.stringify({email:"reader@example.com", subject:"Sheet subject",message:"Sheet body"}),row]);
+  }
+  async function asOwner() { await db.exec("set role authenticated"); await db.query("select set_config('request.jwt.claim.sub',$1,false),set_config('request.jwt.claim.role','authenticated',false)",[owner]); }
+  async function service() { await db.exec("reset role; select set_config('request.jwt.claim.role','service_role',false),set_config('request.jwt.claim.sub','',false)"); }
+  async function saveBody() { await db.query("select public.save_spreadsheet_content_setup($1,$2,null,null,$3,'spreadsheet',$4,false)",[dataset,emailCol,subjectCol,bodyCol]); }
+  async function source() { await setupColumns(); await asOwner(); await saveBody(); await service(); }
+  async function bodySchedule(items?: unknown[], policy = "block_template_recipient", live = true) {
+    const payload = items ?? [{row_id:row,recipient_email:"reader@example.com",template_id:null,content_key:"spreadsheet:"+dataset,template_name:"Spreadsheet body: Message",subject:"Frozen sheet subject",html_body:"<p>Frozen sheet body</p>",plain_text_body:"Frozen sheet body"}];
+    return (await db.query<{id:string}>("select public.scheduler_create_batch($1,$2,now()+interval '10 minutes','Asia/Dhaka',$3,$4,$5,$6::jsonb) id",[owner,dataset,live,policy,crypto.randomUUID(),JSON.stringify(payload)])).rows[0].id;
+  }
+  it("saves body, subject, recipient and signature choices atomically without a template", async () => {
+    await setupColumns(); await asOwner(); await saveBody();
+    expect((await db.query("select body_source,body_column_id,spreadsheet_signature,subject_strategy,fallback_template_id,routing_column_id from public.datasets where id=$1",[dataset])).rows[0]).toMatchObject({body_source:"spreadsheet",body_column_id:bodyCol,spreadsheet_signature:false,subject_strategy:"spreadsheet",fallback_template_id:null,routing_column_id:null});
+    expect((await db.query("select subject_value,recipient_email from public.dataset_rows where id=$1",[row])).rows[0]).toMatchObject({subject_value:"Sheet subject",recipient_email:"reader@example.com"});
+    const result = (await db.query<{entry:{chosen_template_name:string}}>("select public.review_spreadsheet_rows($1) entry",[dataset])).rows[0].entry;
+    expect(result.chosen_template_name).toBe("Spreadsheet body: Message");
+    expect((await db.query("select * from public.review_spreadsheet_rows($1,'','all','missing_template')",[dataset])).rows).toHaveLength(0);
+  });
+  it("rejects overlapping, missing or foreign columns and cross-owner access", async () => {
+    await setupColumns(); await asOwner();
+    await expect(db.query("select public.save_spreadsheet_content_setup($1,$2,null,null,$3,'spreadsheet',$2,true)",[dataset,emailCol,subjectCol])).rejects.toThrow(/different columns/);
+    await expect(db.query("select public.save_spreadsheet_content_setup($1,$2,null,null,$3,'spreadsheet',$4,true)",[dataset,emailCol,subjectCol,crypto.randomUUID()])).rejects.toThrow(/from this spreadsheet/);
+    await db.query("select set_config('request.jwt.claim.sub',$1,false)",[other]);
+    await expect(saveBody()).rejects.toThrow(/not found/);
+    await service();
+    expect((await db.query("select body_source from public.datasets where id=$1",[dataset])).rows[0]).toMatchObject({body_source:"template"});
+  });
+  it("can switch back to templates without leaving hidden spreadsheet mode active", async () => {
+    await source(); await asOwner();
+    await db.query("select public.save_spreadsheet_content_setup($1,$2,null,$3,null,'template',null,true)",[dataset,emailCol,template]);
+    expect((await db.query("select body_source,body_column_id,subject_strategy,fallback_template_id from public.datasets where id=$1",[dataset])).rows[0]).toMatchObject({body_source:"template",body_column_id:null,subject_strategy:"template",fallback_template_id:template});
+  });
+  it("snapshots a template-free scheduled email and records its accepted outcome in shared history", async () => {
+    await source(); const id=await bodySchedule(); await due(id); const lease=await start(); const item=await itemFor(id);
+    expect((await db.query("select template_id,content_key,subject from public.scheduled_mail_items where id=$1",[item.id])).rows[0]).toMatchObject({template_id:null,content_key:"spreadsheet:"+dataset,subject:"Frozen sheet subject"});
+    await db.query("update public.dataset_rows set data='{}' where id=$1",[row]);
+    expect((await db.query<{ok:boolean}>("select public.scheduler_arm_item($1,$2) ok",[item.id,lease])).rows[0].ok).toBe(true);
+    await db.query("select public.scheduler_finish_item($1,$2,'accepted')",[item.id,lease]);
+    expect((await db.query("select template_id,content_key,content_label,subject,final_html_body,status from public.email_history")).rows[0]).toMatchObject({template_id:null,content_key:"spreadsheet:"+dataset,content_label:expect.stringContaining("Spreadsheet body"),subject:"Frozen sheet subject",final_html_body:"<p>Frozen sheet body</p>",status:"sent"});
+    await expect(bodySchedule()).rejects.toThrow(/duplicate/);
+  });
+  it("blocks same-campaign duplicates within a batch even though template IDs are null", async () => {
+    await source();
+    const item={row_id:row,recipient_email:"reader@example.com",template_id:null,content_key:"spreadsheet:"+dataset,template_name:"Spreadsheet body",subject:"Subject",html_body:"<p>Body</p>",plain_text_body:"Body"};
+    const otherRow=crypto.randomUUID();
+    await db.query("insert into public.dataset_rows(id,user_id,dataset_id,row_number,recipient_email,email_normalized,email_valid) values($1,$2,$3,3,'reader@example.com','reader@example.com',true)",[otherRow,owner,dataset]);
+    const repeated={...item,row_id:otherRow};
+    await expect(bodySchedule([item,repeated])).rejects.toThrow(/duplicate/);
+    expect((await db.query("select * from public.scheduled_mail_batches")).rows).toHaveLength(0);
+    await bodySchedule([item,repeated],"allow",false);
+    expect((await db.query("select * from public.scheduled_mail_items")).rows).toHaveLength(2);
+  });
+  it("protects spreadsheet reservations from an immediate browser send and exposes them to readiness", async () => {
+    await source(); await bodySchedule();
+    await asOwner();
+    const p=(await db.query<{p:{scheduled:{content_key:string}[]}}>("select public.send_recipient_protection(array['reader@example.com']) p")).rows[0].p;
+    expect(p.scheduled[0].content_key).toBe("spreadsheet:"+dataset);
+    const r=crypto.randomUUID(), i=crypto.randomUUID();
+    await db.query("insert into public.send_runs(id,user_id,dataset_id,status,live_enabled) values($1,$2,$3,'paused',true)",[r,owner,dataset]);
+    await db.query("insert into public.send_run_items(id,user_id,send_run_id,dataset_row_id,recipient_email,resolved_subject,resolved_html_body) values($1,$2,$3,$4,'reader@example.com','Subject','<p>Body</p>')",[i,owner,r,row]);
+    await expect(db.query("select public.claim_send_run_item($1,0)",[i])).rejects.toThrow(/reserved/);
+  });
+  it("does not allow a request to schedule stale template IDs in spreadsheet mode", async () => {
+    await source();
+    await expect(create()).rejects.toThrow(/source changed/);
+    expect((await db.query("select * from public.scheduled_mail_batches")).rows).toHaveLength(0);
+  });
+  it("prepares an engagement link for a template-free scheduled email and creates a safe fresh-content follow-up", async () => {
+    await source();
+    const items=[{row_id:row,recipient_email:"reader@example.com",template_id:null,content_key:"spreadsheet:"+dataset,template_name:"Spreadsheet body",subject:"Subject",html_body:'<p>Body</p><a href="'+ENGAGEMENT_PREVIEW_URL+'">Visit</a>',plain_text_body:"Visit "+ENGAGEMENT_PREVIEW_URL,engagement_snapshot:{...defaultEngagement,enabled:true,destination:"https://example.com",origin:"https://autmail.vercel.app"}}];
+    const id=await bodySchedule(items); await due(id); const lease=await start(); const item=await itemFor(id);
+    await db.query("select public.scheduler_arm_item($1,$2,true)",[item.id,lease]);
+    const sendItem=(await db.query<{send_run_item_id:string}>("select send_run_item_id from public.scheduled_mail_items where id=$1",[item.id])).rows[0].send_run_item_id;
+    const prepared=(await db.query<{p:{htmlBody:string}}>("select public.engagement_prepare_send($1,'https://autmail.vercel.app') p",[sendItem])).rows[0].p;
+    expect(prepared.htmlBody).toMatch(/\/e\/[a-f0-9]{64}/);
+    expect((await db.query("select template_name,status from public.email_engagement_messages where send_run_item_id=$1",[sendItem])).rows[0]).toMatchObject({template_name:expect.stringContaining("Spreadsheet body"),status:"pending"});
+    await db.query("select public.scheduler_finish_item($1,$2,'accepted')",[item.id,lease]);
+    const message=(await db.query<{id:string;status:string}>("select id,status from public.email_engagement_messages where send_run_item_id=$1",[sendItem])).rows[0];
+    expect(message.status).toBe("accepted");
+    const followup=(await db.query<{p:{id:string}}>("select public.engagement_create_followup($1,array[$2::uuid],'Follow-up',$3) p",[owner,message.id,crypto.randomUUID()])).rows[0].p;
+    expect((await db.query("select body_source,body_column_id,fallback_template_id from public.datasets where id=$1",[followup.id])).rows[0]).toMatchObject({body_source:"template",body_column_id:null,fallback_template_id:null});
+    expect((await db.query<{data:{message:string}}>("select data from public.dataset_rows where dataset_id=$1",[followup.id])).rows[0].data.message).toBe("Sheet body");
+    expect((await db.query("select * from public.send_runs where dataset_id=$1",[followup.id])).rows).toHaveLength(0);
+  });
+  it("copies spreadsheet body data into a history follow-up without implicitly resending the previous message", async () => {
+    await source(); const id=await bodySchedule(); await due(id); const lease=await start(); const item=await itemFor(id);
+    await db.query("select public.scheduler_arm_item($1,$2)",[item.id,lease]); await db.query("select public.scheduler_finish_item($1,$2,'accepted')",[item.id,lease]);
+    const history=(await db.query<{id:string}>("select id from public.email_history")).rows[0];
+    const followup=(await db.query<{p:{id:string}}>("select public.history_create_followup($1,array[$2::uuid],'History follow-up',$3) p",[owner,history.id,crypto.randomUUID()])).rows[0].p;
+    const copied=(await db.query<{data:{message:string}}> ("select data from public.dataset_rows where dataset_id=$1",[followup.id])).rows[0];
+    expect(copied.data.message).toBe("Sheet body");
+    expect((await db.query("select body_source,fallback_template_id from public.datasets where id=$1",[followup.id])).rows[0]).toMatchObject({body_source:"template",fallback_template_id:null});
+    expect((await db.query("select * from public.send_runs where dataset_id=$1",[followup.id])).rows).toHaveLength(0);
+  });
+
 });

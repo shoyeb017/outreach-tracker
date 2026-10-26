@@ -122,3 +122,7 @@ Set the admin email/password to sign in through the shared `/login` page. No has
 Email history follow-ups: after applying `20261019_email_engagement.sql`, run `migrations/20261019_history_followups.sql` once. It adds the service-only atomic/idempotent follow-up RPC, private confirmation records and spreadsheet provenance. It sends no mail, grants no browser access, and needs no new secret or scheduler change. Deploy the updated website afterwards. See [the setup guide](../docs/email-engagement-setup.md).
 
 For individual and bulk record removal, apply `migrations/20261019_record_deletion.sql` after history-followups and before deploying. It adds `deleted_at` list-visibility markers and a service-only atomic removal RPC. Email history and schedule snapshots remain available to internal duplicate/safety checks; engagement removal deletes private activity rows and disables their links. It does not alter Microsoft messages, cancel pending schedules, or enable sending.
+
+## Spreadsheet email bodies
+
+After all `20261019` migrations, apply [`migrations/20261026_spreadsheet_email_body.sql`](migrations/20261026_spreadsheet_email_body.sql) once, then deploy the website. It adds a per-spreadsheet body source, body column, optional signature, frozen content identities/labels, and guarded setup/scheduling functions. Existing datasets remain in template mode. The migration does not start sending or create a timer. See the [easy setup and usage guide](../docs/spreadsheet-body-setup.md).

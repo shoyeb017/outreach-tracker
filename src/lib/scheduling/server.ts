@@ -77,13 +77,13 @@ export async function prepareSchedule(context: Awaited<ReturnType<typeof schedul
   const defaults = await loadEngagement(database, user.id);
   const engagement = engagementSettings({ ...defaults, enabled: defaults.enabled && input.includeEngagement !== false });
   const origin = engagement.enabled ? engagementOrigin() : null;
-  const batchItems: { recipient_email: string; template_id: string }[] = [];
+  const batchItems: { recipient_email: string; template_id: string | null; content_key?: string | null }[] = [];
   const mapped = new Set(placeholderMappings.map((mapping) => mapping.placeholder));
   const items = rows.map((row) => {
     const email = prepareRowEmail({ row, dataset, columns, placeholderMappings, templates, rules, signatureFields, engagement });
     const readiness = checkEmailReadiness({ row, email, mapped, policy: input.duplicatePolicy, batchItems, history: protection.history ?? [], suppressions: protection.suppressed ?? [], uncertain: protection.uncertain ?? [], scheduled: protection.scheduled ?? [] });
-    if (readiness.status === "ready" && email.template) batchItems.push({ recipient_email: row.recipient_email!, template_id: email.template.id });
-    return { row_id: row.id, row_number: row.row_number, recipient_email: row.recipient_email?.trim() ?? "", template_id: email.template?.id ?? "", template_name: email.template?.name ?? "Not resolved", subject: email.subject, html_body: live ? email.htmlBody : email.htmlBody.replaceAll(ENGAGEMENT_PREVIEW_URL, engagement.destination.replaceAll("&", "&amp;").replaceAll('"', "&quot;")), plain_text_body: live ? email.plainTextBody : email.plainTextBody.replaceAll(ENGAGEMENT_PREVIEW_URL, engagement.destination), ...(engagement.enabled && live ? { engagement_snapshot: { ...engagement, origin } } : {}), ...readiness };
+    if (readiness.status === "ready" && (email.template || email.bodySource === "spreadsheet")) batchItems.push({ recipient_email: row.recipient_email!, template_id: email.template?.id ?? null, content_key: email.contentKey });
+    return { row_id: row.id, row_number: row.row_number, recipient_email: row.recipient_email?.trim() ?? "", template_id: email.template?.id ?? null, content_key: email.contentKey, template_name: email.contentLabel ?? email.template?.name ?? "Not resolved", subject: email.subject, html_body: live ? email.htmlBody : email.htmlBody.replaceAll(ENGAGEMENT_PREVIEW_URL, engagement.destination.replaceAll("&", "&amp;").replaceAll('"', "&quot;")), plain_text_body: live ? email.plainTextBody : email.plainTextBody.replaceAll(ENGAGEMENT_PREVIEW_URL, engagement.destination), ...(engagement.enabled && live ? { engagement_snapshot: { ...engagement, origin } } : {}), ...readiness };
   });
   const ready = items.filter((item) => item.status === "ready");
   if (new TextEncoder().encode(JSON.stringify(ready)).byteLength > 1000000) throw new Error("These email snapshots exceed the 1 MB schedule limit. Choose fewer recipients.");

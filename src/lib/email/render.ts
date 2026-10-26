@@ -7,12 +7,19 @@ import { engagementButton, engagementPlainText, engagementSettings, type Engagem
 
 export interface PreparedEmail {
   template: EmailTemplate | null;
+  bodySource?: "template" | "spreadsheet";
+  contentKey?: string | null;
+  contentLabel?: string;
   subject: string;
   htmlBody: string;
   plainTextBody: string;
   missing: string[];
-  routeSource: "override" | "routing" | "fallback" | "skip" | "unmapped";
+  routeSource: "override" | "routing" | "fallback" | "skip" | "unmapped" | "spreadsheet";
   requiredFields: string[];
+}
+
+export function missingEmailLabels(fields: string[]) {
+  return fields.map(field => field === "email_body" ? "email body cell" : field === "email_subject" ? "subject cell" : "{{" + field + "}}").join(", ");
 }
 
 export function normalizeSignatureTokenBlocks(html: string) {
@@ -47,46 +54,62 @@ export function rowTemplateData(
 
 export function prepareRowEmail(args: {
   row: DatasetRow;
-  dataset: Pick<Dataset, "fallback_template_id" | "subject_strategy"> & Partial<Pick<Dataset, "routing_column_id">>;
-  columns: Pick<DatasetColumn, "id" | "placeholder_slug" | "standard_field">[];
+  dataset: Pick<Dataset, "fallback_template_id" | "subject_strategy"> & Partial<Pick<Dataset, "id" | "routing_column_id" | "body_source" | "body_column_id" | "spreadsheet_signature">>;
+  columns: (Pick<DatasetColumn, "id" | "placeholder_slug" | "standard_field"> & Partial<Pick<DatasetColumn, "original_label">>)[];
   placeholderMappings?: Pick<DatasetPlaceholderMapping, "placeholder" | "column_id">[];
   templates: EmailTemplate[];
   rules: RoutingRule[];
   signatureFields?: SignatureField[];
   engagement?: Partial<EngagementSettings> | null;
 }): PreparedEmail {
+  const spreadsheet = args.dataset.body_source === "spreadsheet";
+  const bodyColumn = args.columns.find(column => column.id === args.dataset.body_column_id);
+  const cell = bodyColumn ? String(args.row.data[bodyColumn.placeholder_slug] ?? "") : "";
+  // Spreadsheet content is plain text, never executable HTML. Keep line breaks.
+  const escapedCell = cell.replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!).replace(/\r?\n/g, "<br>");
   const route = resolveTemplateForRow({ overrideTemplateId: args.row.template_override_id, routingValue: args.row.routing_value, rules: args.dataset.routing_column_id === null ? [] : args.rules, fallbackTemplateId: args.dataset.fallback_template_id });
-  const template = args.templates.find((item) => item.id === route.templateId && item.is_active && !item.is_archived) ?? null;
-  if (!template) return { template: null, subject: "", htmlBody: "", plainTextBody: "", missing: [], requiredFields: [], routeSource: route.source };
-  const signature = template.signature_behavior === "none" ? "" : renderSignature(args.signatureFields ?? []);
-  const hasSignatureToken = extractPlaceholders(template.html_body).includes("signature");
+  const routedTemplate = args.templates.find((item) => item.id === route.templateId && item.is_active && !item.is_archived) ?? null;
+  const template = spreadsheet ? null : routedTemplate;
+  // Both sources share rendering/signature rules, but spreadsheet messages are
+  // not saved as templates and never receive a fabricated template ID.
+  const content: Pick<EmailTemplate, "subject_template" | "html_body" | "plain_text_body" | "signature_behavior"> | null = spreadsheet ? {
+    subject_template: "", html_body: "<div>" + escapedCell + "</div>", plain_text_body: cell,
+    signature_behavior: args.dataset.spreadsheet_signature === false ? "none" : "append",
+  } : template;
+  if (!content) return { template: null, subject: "", htmlBody: "", plainTextBody: "", missing: [], requiredFields: [], routeSource: route.source };
+  const signature = content.signature_behavior === "none" ? "" : renderSignature(args.signatureFields ?? []);
+  const hasSignatureToken = extractPlaceholders(content.html_body).includes("signature");
   const engagement = engagementSettings(args.engagement);
   const marker = "<!--autmail-signature-boundary-->";
-  const renderedSignature = engagement.enabled && template.signature_behavior !== "none" ? marker + signature : signature;
+  const renderedSignature = engagement.enabled && content.signature_behavior !== "none" ? marker + signature : signature;
   const context = buildTemplateContext({ rowData: rowTemplateData(args.row, args.columns, args.placeholderMappings), signatureHtml: renderedSignature });
-  const resolvedSubject = resolvePlaceholders(template.subject_template, context);
-  const resolvedBody = resolvePlaceholders(normalizeSignatureTokenBlocks(template.html_body), context, true);
+  const resolvedSubject = resolvePlaceholders(content.subject_template, context);
+  const resolvedBody = resolvePlaceholders(normalizeSignatureTokenBlocks(content.html_body), context, true);
   let htmlBody = resolvedBody.output;
-  if (template.signature_behavior === "append" && !hasSignatureToken) htmlBody += renderedSignature;
-  if (template.signature_behavior === "none" && signature) htmlBody = htmlBody.replace(signature, "");
-  const subject = resolveSubject(args.dataset.subject_strategy, args.row.subject_value, resolvedSubject.output);
-  const plainSignature = template.signature_behavior === "none" ? "" : renderPlainTextSignature(args.signatureFields);
-  const plainContext = { ...context, signature: engagement.enabled && template.signature_behavior !== "none" ? marker + plainSignature : plainSignature };
-  const resolvedPlain = template.plain_text_body ? resolvePlaceholders(template.plain_text_body, plainContext) : null;
+  if (content.signature_behavior === "append" && !hasSignatureToken) htmlBody += renderedSignature;
+  if (content.signature_behavior === "none" && signature) htmlBody = htmlBody.replace(signature, "");
+  const subject = resolveSubject(spreadsheet ? "spreadsheet" : args.dataset.subject_strategy, args.row.subject_value, resolvedSubject.output);
+  const plainSignature = content.signature_behavior === "none" ? "" : renderPlainTextSignature(args.signatureFields);
+  const plainContext = { ...context, signature: engagement.enabled && content.signature_behavior !== "none" ? marker + plainSignature : plainSignature };
+  const resolvedPlain = content.plain_text_body ? resolvePlaceholders(content.plain_text_body, plainContext) : null;
   let plainTextBody = resolvedPlain?.output ?? htmlToPlainText(htmlBody);
-  if (resolvedPlain && template.signature_behavior === "append" && !extractPlaceholders(template.plain_text_body ?? "").includes("signature")) plainTextBody += "\n\n" + plainContext.signature;
+  if (resolvedPlain && content.signature_behavior === "append" && !extractPlaceholders(content.plain_text_body ?? "").includes("signature")) plainTextBody += "\n\n" + plainContext.signature;
   if (engagement.enabled) {
     htmlBody = insertEngagement(htmlBody, marker, signature, engagementButton(engagement), engagement.placement, true);
     // A plain body generated from HTML already contains the button text; build it from the final HTML instead.
     plainTextBody = resolvedPlain ? insertEngagement(plainTextBody, marker, plainSignature, engagementPlainText(engagement), engagement.placement, false) : htmlToPlainText(htmlBody.replace(/(<a\b[^>]*href="https:\/\/autmail\.invalid\/engagement-preview"[^>]*>)([\s\S]*?)(<\/a>)/i, "$1$2 (https://autmail.invalid/engagement-preview)$3"));
   }
   htmlBody = htmlBody.replaceAll(marker, ""); plainTextBody = plainTextBody.replaceAll(marker, "");
-  const usesTemplateSubject = args.dataset.subject_strategy === "template" || (args.dataset.subject_strategy === "spreadsheet_fallback" && !args.row.subject_value?.trim());
+  const usesTemplateSubject = !spreadsheet && (args.dataset.subject_strategy === "template" || (args.dataset.subject_strategy === "spreadsheet_fallback" && !args.row.subject_value?.trim()));
   const missing = Array.from(new Set([...(usesTemplateSubject ? resolvedSubject.missing : []), ...resolvedBody.missing, ...(resolvedPlain?.missing ?? [])]));
   if (!subject.trim()) missing.push("email_subject");
   if (!htmlToPlainText(htmlBody).trim() && !/<img\b/i.test(htmlBody)) missing.push("email_body");
-  const requiredFields = Array.from(new Set([...(usesTemplateSubject ? extractPlaceholders(template.subject_template) : []), ...extractPlaceholders(template.html_body), ...extractPlaceholders(template.plain_text_body ?? "")])).filter((field) => field !== "signature");
-  return { template, subject, htmlBody: sanitizeEmailHtml(htmlBody), plainTextBody, missing, requiredFields, routeSource: route.source };
+  if (spreadsheet && (!bodyColumn || !cell.trim())) missing.push("email_body");
+  const requiredFields = spreadsheet ? [] : Array.from(new Set([...(usesTemplateSubject ? extractPlaceholders(content.subject_template) : []), ...extractPlaceholders(content.html_body), ...extractPlaceholders(content.plain_text_body ?? "")])).filter((field) => field !== "signature");
+  return { template, bodySource: spreadsheet ? "spreadsheet" : "template",
+    contentKey: spreadsheet ? (args.dataset.id ? "spreadsheet:" + args.dataset.id : null) : template?.id ?? null,
+    contentLabel: spreadsheet ? "Spreadsheet body" + (bodyColumn?.original_label ? ": " + bodyColumn.original_label : "") : template?.name ?? "Email template",
+    subject, htmlBody: sanitizeEmailHtml(htmlBody), plainTextBody, missing: [...new Set(missing)], requiredFields, routeSource: spreadsheet ? "spreadsheet" : route.source };
 }
 
 function insertEngagement(body: string, marker: string, signature: string, button: string, placement: EngagementSettings["placement"], html: boolean) {

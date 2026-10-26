@@ -25,7 +25,7 @@ describe("simple engagement UI",()=>{
   fireEvent.click(screen.getByRole("checkbox",{name:/Create this spreadsheet only/}));
   fireEvent.click(screen.getByRole("button",{name:"Create spreadsheet"}));
   await screen.findByText("Follow-up spreadsheet created");
-  expect(screen.getByRole("link",{name:/Choose follow-up template/})).toHaveAttribute("href","/datasets/new-spreadsheet?tab=required-setup");
+  expect(screen.getByRole("link",{name:/Choose follow-up content/})).toHaveAttribute("href","/datasets/new-spreadsheet?tab=required-setup");
   const calls=mocks.request.mock.calls.filter(([,options])=>options?.method==="POST");expect(calls).toHaveLength(1);expect(JSON.parse(calls[0][1].body)).toMatchObject({ids:[id],confirmed:true});
   expect(mocks.send).not.toHaveBeenCalled();
  });

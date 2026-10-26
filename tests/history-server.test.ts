@@ -25,6 +25,11 @@ function database(results: Record<string, { data: unknown; error: unknown }>, au
 beforeEach(() => vi.clearAllMocks());
 
 describe("resilient email history", () => {
+  it("uses the frozen spreadsheet content label when no template exists", async () => {
+    const db = database({ email_history: { data: [{ ...record, template_id: null, content_label: "Spreadsheet body: Message" }], error: null }, datasets: { data: [], error: null }, templates: { data: [], error: null }, send_runs: { data: [], error: null } });
+    const result = await loadHistory(db.client);
+    expect(result.rows[0].templates?.name).toBe("Spreadsheet body: Message");
+  });
   it("loads owner-scoped metadata without HTML or embedded relationships and labels scheduled results", async () => {
     const db = database({ email_history: { data: [record], error: null }, datasets: { data: [{ id: "spreadsheet", name: "Contacts" }], error: null }, templates: { data: [{ id: "template", name: "Intro" }], error: null }, send_runs: { data: [{ id: "run", scheduled_batch_id: "schedule" }], error: null } });
     const result = await loadHistory(db.client);

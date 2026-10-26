@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { HistoryRow } from "@/components/history/history-table";
 
 // List metadata only; full email bodies are loaded when a preview is opened.
-export const HISTORY_FIELDS = "id,dataset_id,dataset_row_id,send_run_id,template_id,recipient_email,recipient_name,company_name,subject,sender_microsoft_email,status,error_message,sent_at,is_test";
+export const HISTORY_FIELDS = "id,dataset_id,dataset_row_id,send_run_id,template_id,content_label,recipient_email,recipient_name,company_name,subject,sender_microsoft_email,status,error_message,sent_at,is_test";
 
 export function historyLoadError(code?: string) {
   if (code === "42501") return "Your account cannot access email history. Ask the administrator to check database permissions and workspace access.";
@@ -48,7 +48,7 @@ export async function loadHistory(client: SupabaseClient) {
   const runSources = new Map(runs.data?.map(row => [row.id, row.scheduled_batch_id]));
   const rows: HistoryRow[] = records.map(row => ({ ...row, final_html_body: "", final_plain_text_body: null, body_loaded: false,
     datasets: datasetNames.has(row.dataset_id) ? { name: datasetNames.get(row.dataset_id)! } : null,
-    templates: templateNames.has(row.template_id) ? { name: templateNames.get(row.template_id)! } : null,
+    templates: row.content_label ? { name: row.content_label } : templateNames.has(row.template_id) ? { name: templateNames.get(row.template_id)! } : null,
     sending_method: runs.error ? "unknown" : runSources.get(row.send_run_id) ? "scheduled" : "manual",
   }));
   return { rows, warning: datasets.error || templates.error || runs.error ? "Email results are loaded, but some spreadsheet, template or scheduling labels are unavailable. Refresh to retry." : undefined };

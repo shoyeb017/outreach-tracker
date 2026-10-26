@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, ArrowLeft, ArrowRight, Braces, CheckCircle2, FileSpreadsheet, LoaderCircle, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { BodySourceFields, SpreadsheetBodySummary } from "./body-source-fields";
 import { datasetSteps } from "@/lib/datasets/workflow";
 import { WorkflowSteps } from "@/components/layout/workflow-steps";
 import { isValidEmail } from "@/lib/validation/email";
@@ -21,12 +22,13 @@ import { groupRoutingValues, normalizeRoutingValue, suggestTemplate, suggestTemp
 import type { EmailTemplate, SubjectStrategy } from "@/types";
 
 const steps = ["Upload", datasetSteps[0].label, datasetSteps[1].label, datasetSteps[2].label, "Save spreadsheet"];
-export interface MappingProfile { id: string; name: string; mappings: Record<string, string>; routing_key_label: string | null; routing_rules: Record<string, { action: "template" | "fallback" | "skip"; templateId: string }>; subject_strategy: SubjectStrategy }
+export interface MappingProfile { id: string; name: string; mappings: Record<string, string>; routing_key_label: string | null; routing_rules: Record<string, { action: "template" | "fallback" | "skip"; templateId: string }>; subject_strategy: SubjectStrategy; body_source?: "template" | "spreadsheet"; spreadsheet_signature?: boolean }
 
 function autoMapping(columns: ParsedSheet["columns"]) {
   const aliases: Record<string, string[]> = {
     recipient_email: ["email", "email_address", "emailaddress", "recipient_email", "public_email", "contact_email"],
     subject: ["subject", "email_subject"],
+    email_body: ["body", "email_body", "message", "email_message"],
   };
   return Object.fromEntries(Object.entries(aliases).map(([field, candidates]) => [field, columns.find((column) => candidates.includes(column.slug))?.originalLabel ?? ""]));
 }
@@ -47,6 +49,9 @@ function suggestPlaceholderColumn(placeholder: string, parsed: ParsedSheet, mapp
 
 export function ImportWizard({ templates, mappingProfiles = [] }: { templates: EmailTemplate[]; mappingProfiles?: MappingProfile[] }) {
   const router = useRouter();
+  const [bodySource, setBodySource] = useState<"template" | "spreadsheet">("template");
+  const [spreadsheetSignature, setSpreadsheetSignature] = useState(true);
+  const stepsForSource = steps.map((label, index) => bodySource === "spreadsheet" && index === 2 ? "Email content" : label);
   const fileInput = useRef<HTMLInputElement>(null);
   const reading = useRef(false);
   const [workbook, setWorkbook] = useState<WorkbookInfo | null>(null);
@@ -68,10 +73,11 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
   }, [parsed, routingColumn]);
   const routeSuggestions = useMemo(() => new Map(routeValues.map(value => [value, suggestTemplateMatch(value, templates)])), [routeValues, templates]);
   const selectedTemplates = useMemo(() => {
+    if (bodySource === "spreadsheet") return [];
     const ids = new Set((templateMode === "column" ? routeValues.map((value) => routeMap[value]).filter(Boolean) : []).filter((route) => route.action === "template" && route.templateId).map((route) => route.templateId));
     if (fallbackTemplate) ids.add(fallbackTemplate);
     return templates.filter((template) => ids.has(template.id) && template.is_active && !template.is_archived);
-  }, [fallbackTemplate, routeMap, templates, templateMode, routeValues]);
+  }, [bodySource, fallbackTemplate, routeMap, templates, templateMode, routeValues]);
   const requiredPlaceholders = useMemo(() => dataPlaceholdersForTemplates(selectedTemplates, subjectStrategy !== "spreadsheet"), [selectedTemplates, subjectStrategy]);
 
   useEffect(() => { if (!parsed) return; const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [parsed]);
@@ -80,13 +86,18 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
   function setupIssue() {
     if (!parsed?.rows.length) return "Choose a worksheet with at least one row.";
     if (!parsed.columns.some((column) => column.originalLabel === mapping.recipient_email)) return "Choose the column containing recipient email addresses.";
-    if (subjectStrategy !== "template") {
-      if (!parsed.columns.some((column) => column.originalLabel === mapping.subject)) return "Choose the spreadsheet column containing subject lines, or use template subjects only.";
+    if (bodySource === "spreadsheet") {
+      if (!parsed.columns.some(column => column.originalLabel === mapping.email_body)) return "Choose the column containing the email bodies.";
+      if ([mapping.recipient_email, mapping.subject].includes(mapping.email_body)) return "Recipient email, subject and body must use different columns.";
+    }
+    if (subjectStrategy !== "template" || bodySource === "spreadsheet") {
+      if (!parsed.columns.some((column) => column.originalLabel === mapping.subject)) return bodySource === "spreadsheet" ? "Choose the spreadsheet column containing subject lines. Spreadsheet bodies need a subject for every recipient." : "Choose the spreadsheet column containing subject lines, or use template subjects only.";
       if (mapping.subject === mapping.recipient_email) return "Email addresses and subjects must use different columns.";
     }
     return "";
   }
   function templateIssue() {
+    if (bodySource === "spreadsheet") return "";
     const activeIds = new Set(templates.filter((template) => template.is_active && !template.is_archived).map((template) => template.id));
     if (templateMode === "single" && !activeIds.has(fallbackTemplate)) return "Choose an active email template everyone will receive.";
     if (templateMode === "column" && !parsed?.columns.some((column) => column.originalLabel === routingColumn)) return "Choose a spreadsheet column, such as Industry.";
@@ -107,7 +118,7 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     const previousName = parsed ? suggestedSpreadsheetName(parsed.fileName, parsed.selectedSheet) : "";
     setDatasetName(current => !current || current === previousName ? suggestedSpreadsheetName(selected.name, result.selectedSheet) : current);
     setParsed(result); setSheetChoice(result.selectedSheet); setMapping(autoMapping(result.columns));
-    setRoutingColumn(""); setRouteMap({}); setPlaceholderMap({}); setIssue(""); setFallbackTemplate(""); setTemplateMode("single"); setSubjectStrategy("template"); setStep(1);
+    setRoutingColumn(""); setRouteMap({}); setPlaceholderMap({}); setIssue(""); setFallbackTemplate(""); setTemplateMode("single"); setSubjectStrategy("template"); setBodySource("template"); setSpreadsheetSignature(true); setStep(1);
   }
   async function chooseFile(selected?: File) {
     if (!selected || reading.current) return;
@@ -138,7 +149,7 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     setStep((value) => Math.min(value + 1, 4));
   }
   async function importDataset() {
-    if (pending || !parsed || !file || !mapping.recipient_email || (templateMode === "single" ? !fallbackTemplate : !routingColumn)) return;
+    if (pending || !parsed || !file || !mapping.recipient_email || (bodySource === "template" && (templateMode === "single" ? !fallbackTemplate : !routingColumn))) return;
     if (setupIssue()) { setIssue(setupIssue()); setStep(1); return; }
     if (templateIssue()) { setIssue(templateIssue()); setStep(2); return; }
     if (missingFields.length) { setIssue("Connect every personalization field before saving."); setStep(3); return; }
@@ -146,22 +157,23 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     const supabase = getSupabaseBrowserClient(); let datasetId = "";
     try {
       const { data: { user }, error: userError } = await supabase.auth.getUser(); if (userError || !user) throw userError ?? new Error("Sign in again before importing.");
-      const savedMapping = { ...mapping, subject: subjectStrategy === "template" ? "" : mapping.subject };
-      const mappedRows = parsed.rows.map((row) => mapImportedRow(row, parsed.columns, { ...savedMapping, routing_key: templateMode === "column" ? routingColumn : "" }));
+      const savedMapping = { ...mapping, email_body: bodySource === "spreadsheet" ? mapping.email_body : "", subject: bodySource === "template" && subjectStrategy === "template" ? "" : mapping.subject };
+      const mappedRows = parsed.rows.map((row) => mapImportedRow(row, parsed.columns, { ...savedMapping, routing_key: bodySource === "template" && templateMode === "column" ? routingColumn : "" }));
       const valid = mappedRows.filter((row) => row.email_valid).length; const missing = mappedRows.filter((row) => !row.recipient_email).length;
       const invalid = mappedRows.length - valid - missing;
-      const { data: dataset, error: datasetError } = await supabase.from("datasets").insert({ user_id: user.id, name: datasetName.trim() || "Untitled spreadsheet", source_file_name: file.name, source_sheet_name: parsed.selectedSheet, row_count: mappedRows.length, valid_email_count: valid, missing_email_count: missing, invalid_email_count: invalid, fallback_template_id: fallbackTemplate || null, subject_strategy: subjectStrategy }).select("id").single();
+      const { data: dataset, error: datasetError } = await supabase.from("datasets").insert({ user_id: user.id, name: datasetName.trim() || "Untitled spreadsheet", source_file_name: file.name, source_sheet_name: parsed.selectedSheet, row_count: mappedRows.length, valid_email_count: valid, missing_email_count: missing, invalid_email_count: invalid, fallback_template_id: bodySource === "spreadsheet" ? null : fallbackTemplate || null, subject_strategy: bodySource === "spreadsheet" ? "spreadsheet" : subjectStrategy, body_source: bodySource, spreadsheet_signature: spreadsheetSignature }).select("id").single();
       if (datasetError) throw datasetError; datasetId = dataset.id;
       const reverseMapping = Object.fromEntries(Object.entries(savedMapping).filter(([, value]) => value).map(([key, value]) => [value, key]));
       const { data: savedColumns, error: columnError } = await supabase.from("dataset_columns").insert(parsed.columns.map((column) => ({ user_id: user.id, dataset_id: dataset.id, original_label: column.originalLabel, placeholder_slug: column.slug, standard_field: reverseMapping[column.originalLabel] ?? null, display_order: column.index, data_type: "text" }))).select("id,original_label");
       if (columnError) throw columnError;
-      const routingColumnId = savedColumns?.find((column) => column.original_label === (templateMode === "column" ? routingColumn : ""))?.id ?? null;
-      if (routingColumnId) { const { error } = await supabase.from("datasets").update({ routing_column_id: routingColumnId }).eq("id", dataset.id); if (error) throw error; }
+      const routingColumnId = savedColumns?.find((column) => column.original_label === (bodySource === "template" && templateMode === "column" ? routingColumn : ""))?.id ?? null;
+      const bodyColumnId = bodySource === "spreadsheet" ? savedColumns?.find(column => column.original_label === mapping.email_body)?.id ?? null : null;
+      if (routingColumnId || bodyColumnId) { const { error } = await supabase.from("datasets").update({ routing_column_id: routingColumnId, body_column_id: bodyColumnId }).eq("id", dataset.id); if (error) throw error; }
       for (let start = 0; start < mappedRows.length; start += 500) {
         const batch = mappedRows.slice(start, start + 500).map((row, offset) => ({ ...row, user_id: user.id, dataset_id: dataset.id, row_number: start + offset + 2 }));
         const { error } = await supabase.from("dataset_rows").insert(batch); if (error) throw error;
       }
-      if (templateMode === "column" && routingColumn && routeValues.length) {
+      if (bodySource === "template" && templateMode === "column" && routingColumn && routeValues.length) {
         const rules = routeValues.map((value) => { const route = routeMap[value]; const action = route?.action === "template" && !route.templateId ? "skip" : route?.action ?? "skip"; return { user_id: user.id, dataset_id: dataset.id, routing_value: value, normalized_value: normalizeRoutingValue(value), template_id: action === "template" ? route?.templateId : null, action }; });
         const { error } = await supabase.from("routing_rules").insert(rules); if (error) throw error;
       }
@@ -183,14 +195,15 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
     if (!parsed) return;
     setIssue("");
     if (!profileId) {
-      setMapping(autoMapping(parsed.columns)); setRoutingColumn(""); setTemplateMode("single"); setFallbackTemplate(""); setRouteMap({}); setPlaceholderMap({}); setSubjectStrategy("template");
+      setMapping(autoMapping(parsed.columns)); setRoutingColumn(""); setTemplateMode("single"); setFallbackTemplate(""); setRouteMap({}); setPlaceholderMap({}); setSubjectStrategy("template"); setBodySource("template"); setSpreadsheetSignature(true);
       return;
     }
     const profile = mappingProfiles.find((item) => item.id === profileId);
     if (!profile) return;
+    setBodySource(profile.body_source ?? "template"); setSpreadsheetSignature(profile.spreadsheet_signature !== false);
     const labels = new Set(parsed.columns.map((column) => column.originalLabel));
     const routingKey = profile.routing_key_label && labels.has(profile.routing_key_label) ? profile.routing_key_label : "";
-    setMapping(Object.fromEntries(Object.entries(profile.mappings).filter(([field, label]) => ["recipient_email", "subject"].includes(field) && labels.has(label))));
+    setMapping(Object.fromEntries(Object.entries(profile.mappings).filter(([field, label]) => ["recipient_email", "subject", "email_body"].includes(field) && labels.has(label))));
     setRoutingColumn(routingKey); setTemplateMode(profile.routing_key_label ? "column" : "single");
     setFallbackTemplate(profile.routing_rules?.__default?.templateId ?? "");
     const counts = new Map<string, number>();
@@ -201,8 +214,8 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
       return [group.routing_value, entry ?? { action: "skip", templateId: "" }];
     })));
     setPlaceholderMap(Object.fromEntries(Object.entries(profile.mappings).filter(([token, label]) => token.startsWith("field:") && labels.has(label)).map(([token, label]) => [token.slice(6), label])));
-    setSubjectStrategy(profile.subject_strategy === "template" ? "template" : "spreadsheet_fallback");
-    toast.success(`Applied ${profile.name}. Review the columns and template choices before continuing.`);
+    setSubjectStrategy(profile.body_source === "spreadsheet" ? "spreadsheet" : profile.subject_strategy === "template" ? "template" : "spreadsheet_fallback");
+    toast.success(`Applied ${profile.name}. Review the email columns and content choices before continuing.`);
   }
 
   const examples = (label: string) => parsed?.rows.slice(0, 3).map((row) => String(row[label] ?? "") || "Empty").join(" · ");
@@ -212,10 +225,10 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
   const needsDefaultTemplate = templateMode === "column" && routeValues.some((value) => routeMap[value]?.action === "fallback");
   const templateOptions = templates.filter((template) => template.is_active && !template.is_archived).map((template) => <option key={template.id} value={template.id}>{template.name}</option>);
   const columnOptions = parsed?.columns.map((column) => <option key={column.slug} value={column.originalLabel}>{column.originalLabel}</option>);
-  const completedSteps = [!!parsed?.rows.length, !!parsed && !setupIssue(), !!parsed && !templateIssue(), !!parsed && !templateIssue() && !missingFields.length, false].flatMap((ready, index) => ready ? [index] : []);
+  const completedSteps = [!!parsed?.rows.length, !!parsed && !setupIssue(), !!parsed && !setupIssue() && !templateIssue(), !!parsed && !templateIssue() && !missingFields.length, false].flatMap((ready, index) => ready ? [index] : []);
   return <div className="mx-auto max-w-5xl space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-[var(--muted-foreground)]">Set up your spreadsheet first. Select recipients and send only after saving.</p><Badge tone="success">No emails sent during setup</Badge></div>
-    <WorkflowSteps steps={steps} current={step} completed={completedSteps} disabled={steps.flatMap((_, index) => pending || index > step ? [index] : [])} onSelect={(index) => { if (!pending && index < step) { setStep(index); setIssue(""); } }} />
+    <WorkflowSteps steps={stepsForSource} current={step} completed={completedSteps} disabled={steps.flatMap((_, index) => pending || index > step ? [index] : [])} onSelect={(index) => { if (!pending && index < step) { setStep(index); setIssue(""); } }} />
     {pending && step === 4 ? <Card><CardContent className="flex min-h-64 flex-col items-center justify-center gap-4" role="status"><LoaderCircle className="animate-spin" /><h2 className="font-semibold">Saving your spreadsheet…</h2><p className="text-sm text-[var(--muted-foreground)]">Keep this page open. Nothing is being emailed.</p></CardContent></Card> : <>
     {step === 0 && parsed && sheetChoice === parsed.selectedSheet && <Card><CardContent className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-semibold">{parsed.fileName}</p><p className="mt-1 text-xs text-[var(--muted-foreground)]">{parsed.selectedSheet} · {parsed.rows.length.toLocaleString()} rows · Your current choices are kept.</p></div><Button disabled={pending} onClick={() => { setStep(1); setIssue(""); }}>Continue with this file<ArrowRight size={15} /></Button></CardContent></Card>}
     {step === 0 && <Card><CardContent className="space-y-6 py-8 text-left">
@@ -246,7 +259,8 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
         <div><Label htmlFor="recipient-column">Which column contains the email address we should send to?</Label><Select id="recipient-column" value={mapping.recipient_email ?? ""} required onChange={(event) => { setMapping((current) => ({ ...current, recipient_email: event.target.value })); setIssue(""); }}><option value="">Choose recipient email column</option>{columnOptions}</Select>{mapping.recipient_email && <><p className="mt-2 break-words text-xs text-[var(--muted-foreground)]">Example recipient emails: {examples(mapping.recipient_email)}</p><div className="mt-3 flex flex-wrap gap-2"><Badge tone="success">{validCount} valid</Badge><Badge tone="warning">{missingCount} missing</Badge><Badge tone="danger">{emailValues.length - validCount - missingCount} invalid</Badge></div><p className="mt-2 text-xs text-[var(--muted-foreground)]">Missing and invalid addresses can be fixed later. They will not be sent.</p></>}</div>
       </section>
       <details><summary className="cursor-pointer text-sm font-semibold">Preview spreadsheet</summary><div className="table-frame mt-3 max-h-80" role="region" aria-label="Spreadsheet preview, scroll for more columns" tabIndex={0}><table className="data-table w-full" style={{ minWidth: parsed.columns.length * 240 }}><colgroup>{parsed.columns.map((column) => <col key={column.slug} style={{ width: 240 }} />)}</colgroup><thead className="bg-[var(--muted)]"><tr>{parsed.columns.map((column) => <th className="p-3" key={column.slug}>{column.originalLabel}</th>)}</tr></thead><tbody>{parsed.previewRows.map((row, index) => <tr key={index} className="border-t">{parsed.columns.map((column) => <td className="break-words whitespace-normal" key={column.slug}>{String(row[column.originalLabel] ?? "") || "Empty"}</td>)}</tr>)}</tbody></table></div></details>
-      <details className="rounded-lg border p-4">
+      <BodySourceFields bodyExample={String(parsed.rows[0]?.[mapping.email_body] ?? "")} source={bodySource} bodyColumn={mapping.email_body ?? ""} subjectColumn={mapping.subject ?? ""} signature={spreadsheetSignature} columns={parsed.columns.map(column => ({ value: column.originalLabel, label: column.originalLabel }))} onSource={value => { setBodySource(value); setSubjectStrategy(value === "spreadsheet" ? "spreadsheet" : "template"); setIssue(""); }} onBodyColumn={value => setMapping(current => ({ ...current, email_body: value }))} onSubjectColumn={value => setMapping(current => ({ ...current, subject: value }))} onSignature={setSpreadsheetSignature} />
+      {bodySource === "template" && <details className="rounded-lg border p-4">
         <summary className="cursor-pointer text-sm font-semibold">Subject options (optional)</summary>
         <p className="mt-3 text-xs leading-5 text-[var(--muted-foreground)]">The subject is the title a recipient sees in their inbox. Choose where that title comes from.</p>
         <div className="mt-4 space-y-4">
@@ -255,9 +269,10 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
           </div>
           {subjectStrategy === "spreadsheet_fallback" && <div><Label htmlFor="subject-column">Which spreadsheet column contains the subjects? (required)</Label><Select id="subject-column" aria-label="Spreadsheet subject column" required value={mapping.subject ?? ""} onChange={(event) => { setMapping((current) => ({ ...current, subject: event.target.value })); setIssue(""); }}><option value="">Choose subject column</option>{columnOptions}</Select>{mapping.subject && <p className="mt-2 break-words text-xs text-[var(--muted-foreground)]">Example subjects: {examples(mapping.subject)}</p>}</div>}
         </div>
-      </details>
+      </details>}
     </CardContent></Card>}
-    {step === 2 && <Card><CardHeader><CardTitle>Choose templates</CardTitle><p className="page-subtitle">A template is the message you want to send. Use the same template for everyone, or choose different templates using a spreadsheet column.</p></CardHeader><CardContent className="space-y-5">
+    {step === 2 && bodySource === "spreadsheet" && <Card><CardHeader><CardTitle>Email content</CardTitle></CardHeader><CardContent><SpreadsheetBodySummary body={mapping.email_body} subject={mapping.subject} signature={spreadsheetSignature} /></CardContent></Card>}
+    {step === 2 && bodySource === "template" && <Card><CardHeader><CardTitle>Choose templates</CardTitle><p className="page-subtitle">A template is the message you want to send. Use the same template for everyone, or choose different templates using a spreadsheet column.</p></CardHeader><CardContent className="space-y-5">
       <fieldset className="grid gap-3 sm:grid-cols-2"><legend className="sr-only">How to choose templates</legend>{[["single", "One template for everyone", "Send the same template to every recipient. Each email can still include their own details."], ["column", "Different templates by spreadsheet value", "For example, use the Industry column: Finance gets one template, Technology gets another."]].map(([value, title, copy]) => <label key={value} className={`min-w-0 cursor-pointer rounded-lg border p-4 ${templateMode === value ? "border-[var(--primary)] bg-[var(--accent)]" : ""}`}><span className="flex items-start gap-2"><input className="mt-1 shrink-0" type="radio" name="template-mode" value={value} checked={templateMode === value} onChange={() => { setTemplateMode(value as "single" | "column"); setFallbackTemplate(""); setIssue(""); }} /><span className="text-sm font-semibold">{title}</span></span><span className="mt-2 block text-xs leading-5 text-[var(--muted-foreground)]">{copy}</span></label>)}</fieldset>
       {!templates.length && <p role="alert" className="rounded-lg bg-[var(--muted)] p-3 text-sm">You need an active email template. <Link className="underline" href="/templates/new">Create one</Link> before continuing.</p>}
       {templateMode === "single" ? <div><Label htmlFor="everyone-template">Email template for everyone</Label><Select id="everyone-template" value={fallbackTemplate} onChange={(event) => setFallbackTemplate(event.target.value)}><option value="">Choose email template</option>{templateOptions}</Select></div> : <>
@@ -279,7 +294,8 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
       {routingColumn && <div className="rounded-lg border bg-[var(--surface-hover)] p-4"><Label htmlFor="default-email">Default template {needsDefaultTemplate ? "(required)" : "(optional)"}</Label><Select id="default-email" required={needsDefaultTemplate} aria-describedby="default-template-hint" value={fallbackTemplate} onChange={(event) => { setFallbackTemplate(event.target.value); setIssue(""); }}><option value="">{needsDefaultTemplate ? "Choose a default template to continue" : "No default — leave unmatched recipients out"}</option>{templateOptions}</Select><p id="default-template-hint" className="mt-2 text-xs leading-5 text-[var(--muted-foreground)]">{needsDefaultTemplate ? "Required because at least one group uses “Use default template”. Every such group will use this template." : "Only needed if you want a shared template for rows with missing or unmatched values."} Groups explicitly marked Skip are always left out.</p></div>}
       </>}
     </CardContent></Card>}
-    {step === 3 && parsed && <Card><CardHeader><CardTitle>Personalize your emails</CardTitle><p className="page-subtitle">Fill the blanks in your templates using your spreadsheet. For each field, choose the column that has the right information. For example, connect {"{{company_name}}"} to Business Name to turn “Hi {"{{company_name}}"}” into “Hi Northstar Labs”. Your signature comes from Settings.</p></CardHeader><CardContent className="space-y-4">
+    {step === 3 && parsed && bodySource === "spreadsheet" && <Card><CardHeader><CardTitle>Personalize your emails</CardTitle><p className="page-subtitle">Your messages are already written in your spreadsheet. No template fields need to be connected.</p></CardHeader><CardContent><SpreadsheetBodySummary body={mapping.email_body} subject={mapping.subject} signature={spreadsheetSignature} /><details className="mt-4"><summary className="cursor-pointer text-sm">Optional placeholder keys</summary><ul className="mt-3 grid gap-2 text-xs sm:grid-cols-2">{parsed.columns.map(column => <li key={column.slug}><code>{"{{" + column.slug + "}}"}</code> — {column.originalLabel}</li>)}</ul></details></CardContent></Card>}
+    {step === 3 && parsed && bodySource === "template" && <Card><CardHeader><CardTitle>Personalize your emails</CardTitle><p className="page-subtitle">Fill the blanks in your templates using your spreadsheet. For each field, choose the column that has the right information. For example, connect {"{{company_name}}"} to Business Name to turn “Hi {"{{company_name}}"}” into “Hi Northstar Labs”. Your signature comes from Settings.</p></CardHeader><CardContent className="space-y-4">
       {requiredPlaceholders.length ? requiredPlaceholders.map((placeholder) => <div className="grid gap-3 rounded-xl border p-4 sm:grid-cols-2" key={placeholder}><div><span className="flex items-center gap-2 text-sm font-semibold"><Braces size={16} />{placeholder.replaceAll("_", " ")}</span><code className="mt-1 block text-xs text-[var(--primary)]">{`{{${placeholder}}}`}</code><p className="mt-2 text-xs text-[var(--muted-foreground)]">{selectedTemplates.filter((template) => (template.subject_template + template.html_body + template.plain_text_body).includes(placeholder)).map((template) => template.name).join(", ")}</p></div><div><Select aria-label={`Spreadsheet column for ${placeholder}`} value={placeholderMap[placeholder] ?? ""} onChange={(event) => setPlaceholderMap((current) => ({ ...current, [placeholder]: event.target.value }))}><option value="">Choose spreadsheet column</option>{columnOptions}</Select><p className="mt-2 text-xs text-[var(--muted-foreground)]">{placeholderMap[placeholder] ? `Example result: ${examples(placeholderMap[placeholder])}` : "Choose a column to continue. Blank values in individual rows can be fixed after saving."}</p></div></div>) : <div className="rounded-xl bg-[var(--muted)] p-5 text-sm">No spreadsheet fields are needed for these emails. You can continue.</div>}
     </CardContent></Card>}
     {step === 4 && parsed && <Card><CardHeader><CardTitle>Save your spreadsheet</CardTitle><p className="page-subtitle">Check your setup and save. Next, select recipient rows, preview the finished emails, and confirm a separate send.</p></CardHeader><CardContent className="space-y-5">
@@ -289,15 +305,16 @@ export function ImportWizard({ templates, mappingProfiles = [] }: { templates: E
         ["Imported rows", parsed.rows.length.toLocaleString()],
         ["Recipient email column", mapping.recipient_email],
         ["Email quality", validCount + " valid · " + missingCount + " missing · " + (emailValues.length - validCount - missingCount) + " invalid"],
-        ["Template selection", templateMode === "single" ? "One template for everyone" : "Values from " + routingColumn],
-        ["Templates used", selectedTemplates.map((template) => template.name).join(", ") || "All groups are skipped"],
+        ["Email body source", bodySource === "spreadsheet" ? "Spreadsheet column: " + mapping.email_body : "Email templates"],
+        ["Template selection", bodySource === "spreadsheet" ? "Not needed — using spreadsheet bodies" : templateMode === "single" ? "One template for everyone" : "Values from " + routingColumn],
+        ["Templates used", bodySource === "spreadsheet" ? "None required" : selectedTemplates.map((template) => template.name).join(", ") || "All groups are skipped"],
         ["Personalization", (requiredPlaceholders.length - missingFields.length) + " of " + requiredPlaceholders.length + " columns connected"],
-        ["Subject source", subjectStrategy === "template" ? "Template subjects only" : mapping.subject + " — blank cells use the template subject"],
+        ["Subject source", bodySource === "spreadsheet" ? mapping.subject + " — required for every recipient" : subjectStrategy === "template" ? "Template subjects only" : mapping.subject + " — blank cells use the template subject"],
       ].map(([label, value]) => <div key={label}><dt className="text-xs text-[var(--muted-foreground)]">{label}</dt><dd className="mt-1 break-words text-sm font-semibold">{value}</dd></div>)}</dl>
-      <details className="rounded-xl border p-4"><summary className="cursor-pointer text-sm font-semibold">Review personalization columns</summary><div className="mt-3 space-y-2">{requiredPlaceholders.length ? requiredPlaceholders.map((token) => <div key={token} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--surface-hover)] p-3 text-sm"><code>{"{{" + token + "}}"}</code><span>{placeholderMap[token] || "Not connected"}</span></div>) : <p className="text-sm text-[var(--muted-foreground)]">These templates do not need spreadsheet personalization fields.</p>}</div></details>
+      <details className="rounded-xl border p-4"><summary className="cursor-pointer text-sm font-semibold">Review personalization columns</summary><div className="mt-3 space-y-2">{requiredPlaceholders.length ? requiredPlaceholders.map((token) => <div key={token} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--surface-hover)] p-3 text-sm"><code>{"{{" + token + "}}"}</code><span>{placeholderMap[token] || "Not connected"}</span></div>) : <p className="text-sm text-[var(--muted-foreground)]">No additional personalization mappings are needed for these messages.</p>}</div></details>
       <div className="rounded-xl border border-[var(--border)] bg-[var(--muted)] p-4"><div className="flex items-center gap-2 text-sm font-semibold text-[var(--muted-foreground)]"><CheckCircle2 size={17} />What happens after saving?</div><p className="mt-2 text-sm leading-6 text-[var(--muted-foreground)]">You will open Select recipients. Tick the rows to contact, preview each email, then use Review &amp; send. Saving this spreadsheet does not send an email.</p></div>
       {validCount < emailValues.length && <p className="rounded-lg bg-[var(--muted)] p-3 text-sm">Rows with missing or invalid addresses will be saved, but cannot be emailed until corrected in Select recipients.</p>}
-      {templateMode === "column" && <p className="rounded-lg bg-[var(--muted)] p-3 text-sm">{routeValues.filter((value) => routeMap[value]?.action === "skip").length} spreadsheet groups are marked Skip. A default template does not override an explicit Skip.</p>}
+      {bodySource === "template" && templateMode === "column" && <p className="rounded-lg bg-[var(--muted)] p-3 text-sm">{routeValues.filter((value) => routeMap[value]?.action === "skip").length} spreadsheet groups are marked Skip. A default template does not override an explicit Skip.</p>}
     </CardContent></Card>}
     {issue && <div role="alert" className="mt-4 flex gap-2 rounded-xl border border-[var(--border)] bg-[var(--muted)] p-4 text-sm text-[var(--danger)]"><AlertCircle size={18} className="shrink-0" />{issue}</div>}
     {step > 0 && <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-[var(--card)] p-4"><Button variant="outline" disabled={pending} onClick={() => { setStep((value) => value - 1); setIssue(""); }}><ArrowLeft size={15} />Back</Button><span className="hidden text-xs text-[var(--muted-foreground)] sm:block">Choices stay here when you go back.</span>{step < 4 ? <Button disabled={pending} onClick={goNext}>Continue<ArrowRight size={15} /></Button> : <Button disabled={pending || !datasetName.trim()} onClick={importDataset}><FileSpreadsheet size={15} />Save and select recipients</Button>}</div>}

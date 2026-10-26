@@ -269,3 +269,59 @@ describe("first-time spreadsheet setup", () => {
     expect(prepared.every((email) => email.missing.length === 0)).toBe(true);
   });
 });
+
+describe("spreadsheet-body import", () => {
+  async function uploadBodySheet() {
+    const data = { "Public Email": "reader@example.com", Subject: "A personal subject", Message: "Hello,\n\nMessage from spreadsheet." };
+    vi.mocked(parseSpreadsheetFile).mockResolvedValue({ ...parsedSheet, columns: [{ originalLabel:"Public Email",slug:"public_email",index:0 },{originalLabel:"Subject",slug:"subject",index:1},{originalLabel:"Message",slug:"message",index:2}],rows:[data],previewRows:[data] });
+    fireEvent.change(screen.getByLabelText("Choose a spreadsheet file"),{target:{files:[new File(["mock"],"contacts.csv")]}});
+    await screen.findByLabelText("Where should the email body come from?");
+    fireEvent.change(screen.getByLabelText("Where should the email body come from?"),{target:{value:"spreadsheet"}});
+  }
+  it("works without templates, explains the skipped template step, and saves nullable template IDs", async () => {
+    const writes: Record<string, unknown> = {};
+    const update = vi.fn((payload:unknown)=>({eq:async()=>{writes.dataset_update=payload;return {error:null};}}));
+    const database = {
+      auth:{getUser:async()=>({data:{user:{id:"user"}},error:null})},
+      from:vi.fn((table:string)=>({ update, insert:(payload:unknown)=>{
+        writes[table]=payload;
+        if(table==="datasets")return {select:()=>({single:async()=>({data:{id:"new-dataset"},error:null})})};
+        if(table==="dataset_columns")return {select:async()=>({data:[{id:"to",original_label:"Public Email"},{id:"subject",original_label:"Subject"},{id:"body",original_label:"Message"}],error:null})};
+        return Promise.resolve({error:null});
+      }})),
+    };
+    mocks.database.mockReturnValue(database);
+    render(<ImportWizard templates={[]} />); await uploadBodySheet();
+    expect(screen.queryByText("Subject options (optional)")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Which column contains the email bodies? (required)")).toHaveValue("Message");
+    fireEvent.click(screen.getByLabelText("Add my saved signature"));
+    fireEvent.click(screen.getByRole("button",{name:"Continue"}));
+    expect(screen.getByRole("heading",{name:"Email content"})).toBeInTheDocument();
+    expect(screen.getByText(/Template selection is not needed/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Email template for everyone")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button",{name:"Continue"}));
+    expect(screen.getByText(/No template fields need to be connected/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button",{name:"Continue"}));
+    expect(screen.getByText("Not needed — using spreadsheet bodies")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button",{name:"Save and select recipients"}));
+    await waitFor(()=>expect(mocks.push).toHaveBeenCalledWith("/datasets/new-dataset?tab=recipients"));
+    expect(writes.datasets).toMatchObject({body_source:"spreadsheet",subject_strategy:"spreadsheet",spreadsheet_signature:false,fallback_template_id:null});
+    expect(writes.dataset_update).toMatchObject({body_column_id:"body",routing_column_id:null});
+    expect(database.from).not.toHaveBeenCalledWith("routing_rules");
+    expect(writes.dataset_rows).toEqual([expect.objectContaining({subject_value:"A personal subject",data:expect.objectContaining({message:"Hello,\n\nMessage from spreadsheet."})})]);
+  });
+  it("requires distinct recipient, subject and body columns and restores template mode when switched back", async () => {
+    render(<ImportWizard templates={[template]} />); await uploadBodySheet();
+    fireEvent.change(screen.getByLabelText("Which column contains the email bodies? (required)"),{target:{value:"Public Email"}});
+    fireEvent.click(screen.getByRole("button",{name:"Continue"}));
+    expect(screen.getByRole("alert")).toHaveTextContent("must use different columns");
+    fireEvent.change(screen.getByLabelText("Which column contains the email bodies? (required)"),{target:{value:"Message"}});
+    fireEvent.change(screen.getByLabelText("Which column contains the subjects? (required)"),{target:{value:""}});
+    fireEvent.click(screen.getByRole("button",{name:"Continue"}));
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose the spreadsheet column containing subject lines");
+    fireEvent.change(screen.getByLabelText("Where should the email body come from?"),{target:{value:"template"}});
+    fireEvent.click(screen.getByRole("button",{name:"Continue"}));
+    expect(screen.getByRole("heading",{name:"Choose templates"})).toBeInTheDocument();
+    expect(screen.getByLabelText("Email template for everyone")).toBeInTheDocument();
+  });
+});

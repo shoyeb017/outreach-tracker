@@ -30,7 +30,7 @@ test("history selects scheduled recipients and confirms a follow-up responsively
     await dialog.getByLabel(/Create only/).check();
     if (width !== 768) await page.screenshot({ path: info.outputPath(`history-followup-${theme}-${width}.png`), fullPage: true });
     await dialog.getByRole("button", { name: "Create spreadsheet" }).click();
-    await expect(page.getByRole("link", { name: "Choose template and review" })).toHaveAttribute("href", "/datasets/followup-sheet?tab=required-setup");
+    await expect(page.getByRole("link", { name: "Choose email content and review" })).toHaveAttribute("href", "/datasets/followup-sheet?tab=required-setup");
     await expect(page.getByText("0 records selected")).toBeVisible();
   }
   expect(posts).toHaveLength(6);

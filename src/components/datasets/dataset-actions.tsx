@@ -25,7 +25,7 @@ export function DatasetActions({ datasetId, datasetName, originalFilePath }: { d
         if (error) throw error;
         for (const row of data ?? []) {
           const original = Object.fromEntries((columns ?? []).map((column) => [column.original_label, row.data[column.placeholder_slug] ?? ""]));
-          rows.push({ ...original, "Outreach: Send status": row.outreach_status === "sent" ? "Accepted by Microsoft" : row.outreach_status === "simulated" ? "Practice complete" : row.outreach_status || "Not sent", "Outreach: Last result": row.last_sent_at || "", "Outreach: Email template": row.chosen_template_name || "", "Outreach: Suppressed": row.suppressed ? "Yes" : "No", "Outreach: Last error": row.last_error || "" });
+          rows.push({ ...original, "Outreach: Send status": row.outreach_status === "sent" ? "Accepted by Microsoft" : row.outreach_status === "simulated" ? "Practice complete" : row.outreach_status || "Not sent", "Outreach: Last result": row.last_sent_at || "", "Outreach: Email content": row.chosen_template_name || "", "Outreach: Suppressed": row.suppressed ? "Yes" : "No", "Outreach: Last error": row.last_error || "" });
         }
         if ((data ?? []).length < 500) break;
       }
@@ -46,7 +46,7 @@ export function DatasetActions({ datasetId, datasetName, originalFilePath }: { d
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return toast.error("Sign in again before saving your setup.");
     const [dataset, columns, rules, fields] = await Promise.all([
-      supabase.from("datasets").select("subject_strategy,routing_column_id,fallback_template_id").eq("id", datasetId).single(),
+      supabase.from("datasets").select("subject_strategy,routing_column_id,fallback_template_id,body_source,body_column_id,spreadsheet_signature").eq("id", datasetId).single(),
       supabase.from("dataset_columns").select("id,original_label,standard_field").eq("dataset_id", datasetId),
       supabase.from("routing_rules").select("routing_value,action,template_id").eq("dataset_id", datasetId),
       supabase.from("dataset_placeholder_mappings").select("placeholder,column_id").eq("dataset_id", datasetId),
@@ -56,6 +56,8 @@ export function DatasetActions({ datasetId, datasetName, originalFilePath }: { d
     if (!dataset.data) return toast.error("This spreadsheet is no longer available.");
     const routing = columns.data?.find((column) => column.id === dataset.data.routing_column_id);
     const mappings = Object.fromEntries((columns.data ?? []).filter((column) => column.standard_field).map((column) => [column.standard_field!, column.original_label]));
+    const bodyColumn = columns.data?.find(column => column.id === dataset.data.body_column_id);
+    if (bodyColumn && dataset.data.body_source === "spreadsheet") mappings.email_body = bodyColumn.original_label;
     for (const field of fields.data ?? []) {
       const column = columns.data?.find((entry) => entry.id === field.column_id);
       if (column) mappings["field:" + field.placeholder] = column.original_label;
@@ -65,7 +67,7 @@ export function DatasetActions({ datasetId, datasetName, originalFilePath }: { d
       user_id: user.id, name: profileName, source_columns: (columns.data ?? []).map((column) => column.original_label),
       mappings, routing_key_label: routing?.original_label ?? null,
       routing_rules: { ...routingRules, __default: { action: "fallback", templateId: dataset.data.fallback_template_id ?? "" } },
-      subject_strategy: dataset.data.subject_strategy,
+      subject_strategy: dataset.data.subject_strategy, body_source: dataset.data.body_source, spreadsheet_signature: dataset.data.spreadsheet_signature,
     }, { onConflict: "user_id,name" });
     if (saveError) toast.error(saveError.message); else toast.success("Reusable setup saved, including personalization fields.");
   }

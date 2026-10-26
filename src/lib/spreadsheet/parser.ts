@@ -168,12 +168,12 @@ export function mapImportedRow(
   };
 }
 
-export function createExampleWorkbook(format: "csv" | "xlsx") {
+export function createExampleWorkbook(format: "csv" | "xlsx", bodySource: "template" | "spreadsheet" = "template") {
   const rows = [
     { "Recipient Name": "Avery Chen", "Public Email": "avery@example.com", "Business Name": "Northstar Labs", Industry: "Technology & Software", Subject: "A quick hello", City: "Seattle" },
     { "Recipient Name": "Jordan Patel", "Public Email": "jordan@example.com", "Business Name": "Harbor Works", Industry: "Manufacturing & Industrial", Subject: "", City: "Austin" },
   ];
-  const sheet = XLSX.utils.json_to_sheet(rows);
+  const sheet = XLSX.utils.json_to_sheet(bodySource === "spreadsheet" ? rows.map((row, index) => ({ ...row, Subject: "A quick hello to " + row["Business Name"], Message: `Hi ${row["Recipient Name"]},\n\n${index ? "Here is an idea for Harbor Works." : "Here is an idea for Northstar Labs."}\n\nWould you be open to a short call?` })) : rows);
   if (format === "csv") return new Blob([XLSX.utils.sheet_to_csv(sheet)], { type: "text/csv;charset=utf-8" });
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Recipients");
